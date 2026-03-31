@@ -1,0 +1,483 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>펀치매니저 웹</title>
+<script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-firestore-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-storage-compat.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+<style>
+*{box-sizing:border-box;margin:0;padding:0;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif}
+:root{
+  --bg:#0F1117;--card:#1A1D27;--card2:#22263A;--border:#2E3350;
+  --accent:#F5A623;--text:#F5F0F0;--muted:#7A80A0;--green:#2ECC71;--red:#E74C3C;
+}
+body{background:var(--bg);color:var(--text);min-height:100vh}
+
+/* ── 로그인 ── */
+#login-screen{display:flex;align-items:center;justify-content:center;min-height:100vh;padding:24px}
+.login-box{background:var(--card);border:1px solid var(--border);border-radius:16px;padding:40px;width:100%;max-width:400px}
+.login-icon{width:72px;height:72px;background:var(--card2);border:1px solid var(--border);border-radius:16px;display:flex;align-items:center;justify-content:center;margin:0 auto 20px;font-size:36px}
+.login-title{text-align:center;font-size:24px;font-weight:900;color:var(--accent);margin-bottom:8px}
+.login-sub{text-align:center;font-size:14px;color:var(--muted);margin-bottom:32px}
+.field-label{font-size:11px;font-weight:700;color:var(--muted);letter-spacing:1.2px;text-transform:uppercase;margin-bottom:8px}
+.field-input{width:100%;padding:12px 16px;background:var(--card2);border:1px solid var(--border);border-radius:10px;color:var(--text);font-size:15px;outline:none;transition:border-color .2s}
+.field-input:focus{border-color:var(--accent)}
+.field-wrap{margin-bottom:16px}
+.btn-primary{width:100%;padding:16px;background:var(--accent);color:#000;border:none;border-radius:12px;font-size:16px;font-weight:900;cursor:pointer;margin-top:8px;transition:opacity .2s}
+.btn-primary:hover{opacity:.9}
+.btn-primary:disabled{opacity:.5;cursor:not-allowed}
+.error-box{background:#2D1A1A;border:1px solid rgba(231,76,60,.5);border-radius:8px;padding:12px;font-size:13px;color:var(--red);margin-top:12px}
+
+/* ── 메인 ── */
+#main-screen{display:none}
+.topbar{background:#0A0C12;border-bottom:1px solid var(--border);padding:0 24px;display:flex;align-items:center;gap:16px;height:56px;position:sticky;top:0;z-index:100}
+.topbar-title{color:var(--accent);font-size:16px;font-weight:900;flex:1}
+.topbar-site{font-size:12px;color:var(--muted)}
+.topbar-code{font-size:12px;color:var(--accent);font-weight:700;background:rgba(245,166,35,.1);padding:3px 8px;border-radius:6px}
+.btn-sm{padding:7px 14px;border-radius:8px;font-size:12px;font-weight:700;cursor:pointer;border:none;transition:opacity .2s}
+.btn-sm:hover{opacity:.85}
+.btn-logout{background:var(--card2);color:var(--muted)}
+.btn-excel{background:var(--green);color:#fff}
+.btn-danger{background:var(--red);color:#fff}
+
+.content{padding:24px;max-width:1400px;margin:0 auto}
+
+/* ── 통계 ── */
+.stats{display:grid;grid-template-columns:repeat(auto-fit,minmax(120px,1fr));gap:12px;margin-bottom:24px}
+.stat-card{background:var(--card);border:1px solid var(--border);border-radius:12px;padding:16px;text-align:center}
+.stat-num{font-size:28px;font-weight:900}
+.stat-lbl{font-size:11px;color:var(--muted);margin-top:4px}
+
+/* ── 필터 ── */
+.filters{background:var(--card);border:1px solid var(--border);border-radius:12px;padding:16px;margin-bottom:20px;display:flex;flex-wrap:wrap;gap:12px;align-items:center}
+.filter-select{padding:8px 12px;background:var(--card2);border:1px solid var(--border);border-radius:8px;color:var(--text);font-size:13px;outline:none;cursor:pointer}
+.filter-input{padding:8px 12px;background:var(--card2);border:1px solid var(--border);border-radius:8px;color:var(--text);font-size:13px;outline:none;flex:1;min-width:160px}
+.filter-input:focus,.filter-select:focus{border-color:var(--accent)}
+.filter-label{font-size:12px;color:var(--muted)}
+
+/* ── 테이블 ── */
+.table-wrap{background:var(--card);border:1px solid var(--border);border-radius:12px;overflow:hidden}
+.table-header{padding:14px 20px;border-bottom:1px solid var(--border);display:flex;align-items:center;justify-content:space-between}
+.table-count{font-size:13px;color:var(--muted)}
+table{width:100%;border-collapse:collapse}
+th{padding:12px 16px;text-align:left;font-size:11px;font-weight:700;color:var(--muted);letter-spacing:1px;text-transform:uppercase;border-bottom:1px solid var(--border);background:var(--card2)}
+td{padding:12px 16px;font-size:13px;border-bottom:1px solid rgba(46,51,80,.5);vertical-align:middle}
+tr:last-child td{border-bottom:none}
+tr:hover td{background:rgba(255,255,255,.02)}
+.thumb{width:56px;height:56px;object-fit:cover;border-radius:8px;cursor:pointer;border:1px solid var(--border);transition:transform .2s}
+.thumb:hover{transform:scale(1.05)}
+.no-thumb{width:56px;height:56px;background:var(--card2);border-radius:8px;display:flex;align-items:center;justify-content:center;font-size:20px;border:1px solid var(--border)}
+.badge{display:inline-block;padding:3px 8px;border-radius:6px;font-size:11px;font-weight:700}
+.badge-open{background:rgba(92,107,192,.2);color:#AAB0E0}
+.badge-done{background:rgba(46,204,113,.15);color:var(--green)}
+.user-tag{font-size:11px;color:var(--muted)}
+
+/* ── 이미지 모달 ── */
+#img-modal{display:none;position:fixed;inset:0;background:rgba(0,0,0,.9);z-index:1000;align-items:center;justify-content:center;padding:24px}
+#img-modal.open{display:flex}
+#img-modal img{max-width:100%;max-height:90vh;border-radius:8px;object-fit:contain}
+#img-modal-close{position:absolute;top:20px;right:20px;background:rgba(255,255,255,.1);border:none;color:#fff;font-size:24px;width:44px;height:44px;border-radius:50%;cursor:pointer;display:flex;align-items:center;justify-content:center}
+.modal-info{position:absolute;bottom:24px;left:50%;transform:translateX(-50%);background:rgba(0,0,0,.7);padding:12px 20px;border-radius:10px;text-align:center;white-space:nowrap}
+.modal-info .mi-loc{font-size:15px;font-weight:700}
+.modal-info .mi-sub{font-size:12px;color:var(--muted);margin-top:4px}
+
+/* ── 로딩 ── */
+.loading{text-align:center;padding:60px;color:var(--muted)}
+.spinner{width:36px;height:36px;border:3px solid var(--border);border-top-color:var(--accent);border-radius:50%;animation:spin .8s linear infinite;margin:0 auto 16px}
+@keyframes spin{to{transform:rotate(360deg)}}
+.empty{text-align:center;padding:60px;color:var(--muted);font-size:15px}
+
+/* ── 동기화 상태 ── */
+.sync-bar{background:rgba(92,107,192,.15);border-bottom:1px solid rgba(92,107,192,.3);padding:8px 24px;font-size:12px;color:#AAB0E0;display:none;align-items:center;gap:8px}
+.sync-bar.show{display:flex}
+
+@media(max-width:768px){
+  .topbar{padding:0 12px;gap:8px}
+  .content{padding:12px}
+  th:nth-child(1),td:nth-child(1){display:none}
+  .modal-info{white-space:normal;width:calc(100% - 48px)}
+}
+</style>
+</head>
+<body>
+
+<!-- 로그인 -->
+<div id="login-screen">
+  <div class="login-box">
+    <div class="login-icon">🏗️</div>
+    <div class="login-title">펀치매니저</div>
+    <div class="login-sub">현장 코드로 로그인해주세요</div>
+    <div class="field-wrap">
+      <div class="field-label">현장 코드</div>
+      <input class="field-input" id="inp-code" placeholder="6자리 코드 입력" maxlength="6"
+        style="text-transform:uppercase;letter-spacing:4px;font-size:20px;font-weight:900;text-align:center">
+    </div>
+    <div class="field-wrap">
+      <div class="field-label">이름</div>
+      <input class="field-input" id="inp-name" placeholder="예: 홍길동">
+    </div>
+    <button class="btn-primary" id="btn-login" onclick="doLogin()">로그인</button>
+    <div class="error-box" id="login-error" style="display:none"></div>
+  </div>
+</div>
+
+<!-- 메인 -->
+<div id="main-screen">
+  <div class="sync-bar" id="sync-bar">
+    <div class="spinner" style="width:16px;height:16px;border-width:2px;margin:0"></div>
+    <span id="sync-msg">데이터 불러오는 중...</span>
+  </div>
+  <div class="topbar">
+    <div class="topbar-title">📋 펀치매니저</div>
+    <div class="topbar-site" id="tb-site"></div>
+    <div class="topbar-code" id="tb-code"></div>
+    <button class="btn-sm btn-excel" onclick="exportExcel()">📊 엑셀</button>
+    <button class="btn-sm btn-logout" onclick="doLogout()">로그아웃</button>
+  </div>
+
+  <div class="content">
+    <!-- 통계 -->
+    <div class="stats">
+      <div class="stat-card"><div class="stat-num" id="st-total" style="color:var(--text)">-</div><div class="stat-lbl">전체</div></div>
+      <div class="stat-card"><div class="stat-num" id="st-open" style="color:#AAB0E0">-</div><div class="stat-lbl">진행중</div></div>
+      <div class="stat-card"><div class="stat-num" id="st-done" style="color:var(--green)">-</div><div class="stat-lbl">완료</div></div>
+      <div class="stat-card"><div class="stat-num" id="st-users" style="color:var(--accent)">-</div><div class="stat-lbl">참여인원</div></div>
+    </div>
+
+    <!-- 필터 -->
+    <div class="filters">
+      <span class="filter-label">필터</span>
+      <select class="filter-select" id="f-dong" onchange="applyFilter()"><option value="">전체 동</option></select>
+      <select class="filter-select" id="f-gj" onchange="applyFilter()"><option value="">전체 공종</option></select>
+      <select class="filter-select" id="f-status" onchange="applyFilter()">
+        <option value="">전체 상태</option>
+        <option value="active">진행중</option>
+        <option value="done">완료</option>
+      </select>
+      <select class="filter-select" id="f-user" onchange="applyFilter()"><option value="">전체 인원</option></select>
+      <input class="filter-input" id="f-search" placeholder="🔍 위치, 내용 검색" oninput="applyFilter()">
+      <button class="btn-sm" style="background:var(--card2);color:var(--muted)" onclick="resetFilter()">초기화</button>
+    </div>
+
+    <!-- 테이블 -->
+    <div class="table-wrap">
+      <div class="table-header">
+        <span class="table-count" id="tbl-count">0개</span>
+        <button class="btn-sm btn-danger" id="btn-delete-all" style="display:none" onclick="confirmDeleteAll()">🗑️ 현장 데이터 전체 삭제</button>
+      </div>
+      <div id="tbl-body">
+        <div class="loading"><div class="spinner"></div>데이터 불러오는 중...</div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- 이미지 모달 -->
+<div id="img-modal" onclick="closeModal(event)">
+  <button id="img-modal-close" onclick="closeImgModal()">✕</button>
+  <img id="modal-img" src="" alt="">
+  <div class="modal-info">
+    <div class="mi-loc" id="modal-loc"></div>
+    <div class="mi-sub" id="modal-sub"></div>
+  </div>
+</div>
+
+<script>
+// ── Firebase 설정 ──
+const firebaseConfig = {
+  apiKey: "AIzaSyDnt2_lExGA6oES2jdDFHk4SyJEf6twBPo",
+  authDomain: "punch-manager-1415a.firebaseapp.com",
+  projectId: "punch-manager-1415a",
+  storageBucket: "punch-manager-1415a.firebasestorage.app",
+  messagingSenderId: "310410880464",
+  appId: "1:310410880464:web:f772e6d2c1ce150aac05d5",
+  measurementId: "G-QMWHYFR3Q7"
+};
+firebase.initializeApp(firebaseConfig);
+const db = firebase.firestore();
+
+let allPhotos = [];
+let currentSiteCode = '';
+let currentSiteName = '';
+let currentUserName = '';
+let isAdmin = false;
+
+// ── 로그인 ──
+document.getElementById('inp-code').addEventListener('input', function() {
+  this.value = this.value.toUpperCase();
+});
+document.getElementById('inp-code').addEventListener('keydown', e => {
+  if (e.key === 'Enter') document.getElementById('inp-name').focus();
+});
+document.getElementById('inp-name').addEventListener('keydown', e => {
+  if (e.key === 'Enter') doLogin();
+});
+
+async function doLogin() {
+  const code = document.getElementById('inp-code').value.trim().toUpperCase();
+  const name = document.getElementById('inp-name').value.trim();
+  const errEl = document.getElementById('login-error');
+  const btn = document.getElementById('btn-login');
+
+  if (!code || code.length !== 6) { showErr('현장 코드 6자리를 입력해주세요'); return; }
+  if (!name) { showErr('이름을 입력해주세요'); return; }
+
+  btn.disabled = true;
+  btn.textContent = '확인 중...';
+  errEl.style.display = 'none';
+
+  try {
+    const doc = await db.collection('sites').doc(code).get();
+    if (!doc.exists) { showErr('존재하지 않는 현장 코드입니다'); btn.disabled=false; btn.textContent='로그인'; return; }
+
+    const data = doc.data();
+    currentSiteCode = code;
+    currentSiteName = data.siteName;
+    currentUserName = name;
+    isAdmin = data.adminName === name;
+
+    sessionStorage.setItem('pm_code', code);
+    sessionStorage.setItem('pm_name', name);
+    sessionStorage.setItem('pm_site', data.siteName);
+    sessionStorage.setItem('pm_admin', isAdmin ? '1' : '0');
+
+    showMain();
+  } catch(e) {
+    showErr('연결 오류: ' + e.message);
+    btn.disabled = false;
+    btn.textContent = '로그인';
+  }
+}
+
+function showErr(msg) {
+  const el = document.getElementById('login-error');
+  el.textContent = msg;
+  el.style.display = 'block';
+  document.getElementById('btn-login').disabled = false;
+  document.getElementById('btn-login').textContent = '로그인';
+}
+
+function doLogout() {
+  sessionStorage.clear();
+  location.reload();
+}
+
+// ── 메인 화면 ──
+function showMain() {
+  document.getElementById('login-screen').style.display = 'none';
+  document.getElementById('main-screen').style.display = 'block';
+  document.getElementById('tb-site').textContent = currentSiteName;
+  document.getElementById('tb-code').textContent = currentSiteCode;
+  if (isAdmin) document.getElementById('btn-delete-all').style.display = 'block';
+  loadPhotos();
+}
+
+async function loadPhotos() {
+  setSyncBar(true, '데이터 불러오는 중...');
+  try {
+    const snap = await db.collection('sites').doc(currentSiteCode)
+        .collection('photos').orderBy('ts', 'desc').get();
+
+    allPhotos = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+    buildFilters();
+    applyFilter();
+    updateStats();
+    setSyncBar(false);
+  } catch(e) {
+    setSyncBar(false);
+    document.getElementById('tbl-body').innerHTML =
+      `<div class="empty">데이터를 불러올 수 없습니다<br><small style="color:var(--muted)">${e.message}</small></div>`;
+  }
+}
+
+function setSyncBar(show, msg = '') {
+  const bar = document.getElementById('sync-bar');
+  if (show) { bar.classList.add('show'); document.getElementById('sync-msg').textContent = msg; }
+  else { bar.classList.remove('show'); }
+}
+
+function buildFilters() {
+  const dongs = [...new Set(allPhotos.map(p => p.dong).filter(Boolean))].sort();
+  const gjs = [...new Set(allPhotos.map(p => p.gj).filter(Boolean))].sort();
+  const users = [...new Set(allPhotos.map(p => p.userName).filter(Boolean))].sort();
+
+  setOptions('f-dong', dongs, '전체 동');
+  setOptions('f-gj', gjs, '전체 공종');
+  setOptions('f-user', users, '전체 인원');
+}
+
+function setOptions(id, arr, placeholder) {
+  const sel = document.getElementById(id);
+  const cur = sel.value;
+  sel.innerHTML = `<option value="">${placeholder}</option>` +
+    arr.map(v => `<option value="${v}"${v===cur?' selected':''}>${v}</option>`).join('');
+}
+
+function applyFilter() {
+  const dong = document.getElementById('f-dong').value;
+  const gj = document.getElementById('f-gj').value;
+  const status = document.getElementById('f-status').value;
+  const user = document.getElementById('f-user').value;
+  const search = document.getElementById('f-search').value.toLowerCase();
+
+  const filtered = allPhotos.filter(p => {
+    if (dong && p.dong !== dong) return false;
+    if (gj && p.gj !== gj) return false;
+    if (status && p.status !== status) return false;
+    if (user && p.userName !== user) return false;
+    if (search) {
+      const hay = `${p.wichi} ${p.content} ${p.dong} ${p.gj} ${p.userName}`.toLowerCase();
+      if (!hay.includes(search)) return false;
+    }
+    return true;
+  });
+
+  renderTable(filtered);
+  document.getElementById('tbl-count').textContent = `${filtered.length}개`;
+}
+
+function resetFilter() {
+  document.getElementById('f-dong').value = '';
+  document.getElementById('f-gj').value = '';
+  document.getElementById('f-status').value = '';
+  document.getElementById('f-user').value = '';
+  document.getElementById('f-search').value = '';
+  applyFilter();
+}
+
+function updateStats() {
+  const total = allPhotos.length;
+  const open = allPhotos.filter(p => p.status === 'active').length;
+  const done = allPhotos.filter(p => p.status === 'done').length;
+  const users = new Set(allPhotos.map(p => p.userName).filter(Boolean)).size;
+  document.getElementById('st-total').textContent = total;
+  document.getElementById('st-open').textContent = open;
+  document.getElementById('st-done').textContent = done;
+  document.getElementById('st-users').textContent = users;
+}
+
+function renderTable(photos) {
+  if (!photos.length) {
+    document.getElementById('tbl-body').innerHTML = '<div class="empty">해당하는 항목이 없습니다</div>';
+    return;
+  }
+
+  const rows = photos.map(p => {
+    const thumb = p.url
+      ? `<img class="thumb" src="${p.url}" onclick="openImg('${p.url}','${esc(p.wichi)}','${esc(p.gj+' · '+p.date+' · '+p.userName)}')" loading="lazy">`
+      : `<div class="no-thumb">📷</div>`;
+    const badge = p.status === 'done'
+      ? `<span class="badge badge-done">완료</span>`
+      : `<span class="badge badge-open">진행중</span>`;
+    return `<tr>
+      <td>${thumb}</td>
+      <td>${p.dong || '-'}<br><small style="color:var(--muted)">${p.ho ? p.ho+'호' : ''} ${p.room || ''}</small></td>
+      <td>${p.gj || '-'}</td>
+      <td>${p.wichi || '-'}</td>
+      <td style="max-width:200px;white-space:normal">${p.content || '-'}</td>
+      <td>${badge}</td>
+      <td>${p.date || '-'}<br><span class="user-tag">${p.userName || '-'}</span></td>
+    </tr>`;
+  }).join('');
+
+  document.getElementById('tbl-body').innerHTML = `
+    <table>
+      <thead><tr>
+        <th>사진</th><th>위치</th><th>공종</th><th>상세위치</th><th>내용</th><th>상태</th><th>일자/작성자</th>
+      </tr></thead>
+      <tbody>${rows}</tbody>
+    </table>`;
+}
+
+function esc(s) { return (s||'').replace(/'/g,"\\'"); }
+
+// ── 이미지 모달 ──
+function openImg(url, loc, sub) {
+  document.getElementById('modal-img').src = url;
+  document.getElementById('modal-loc').textContent = loc;
+  document.getElementById('modal-sub').textContent = sub;
+  document.getElementById('img-modal').classList.add('open');
+}
+function closeImgModal() { document.getElementById('img-modal').classList.remove('open'); }
+function closeModal(e) { if (e.target === document.getElementById('img-modal')) closeImgModal(); }
+
+// ── 엑셀 내보내기 ──
+function exportExcel() {
+  const dong = document.getElementById('f-dong').value;
+  const gj = document.getElementById('f-gj').value;
+  const status = document.getElementById('f-status').value;
+  const user = document.getElementById('f-user').value;
+  const search = document.getElementById('f-search').value.toLowerCase();
+
+  const filtered = allPhotos.filter(p => {
+    if (dong && p.dong !== dong) return false;
+    if (gj && p.gj !== gj) return false;
+    if (status && p.status !== status) return false;
+    if (user && p.userName !== user) return false;
+    if (search) {
+      const hay = `${p.wichi} ${p.content} ${p.dong} ${p.gj} ${p.userName}`.toLowerCase();
+      if (!hay.includes(search)) return false;
+    }
+    return true;
+  });
+
+  const data = [['동', '호수', '공간', '공종', '상세위치', '내용', '상태', '일자', '작성자', '사진URL']];
+  filtered.forEach(p => data.push([
+    p.dong||'', p.ho||'', p.room||'', p.gj||'',
+    p.wichi||'', p.content||'',
+    p.status === 'done' ? '완료' : '진행중',
+    p.date||'', p.userName||'', p.url||''
+  ]));
+
+  const wb = XLSX.utils.book_new();
+  const ws = XLSX.utils.aoa_to_sheet(data);
+  ws['!cols'] = [8,6,8,8,15,20,6,10,8,40].map(w=>({wch:w}));
+  XLSX.utils.book_append_sheet(wb, ws, '펀치리스트');
+  XLSX.writeFile(wb, `펀치리스트_${currentSiteName}_${new Date().toISOString().slice(0,10)}.xlsx`);
+}
+
+// ── 전체 삭제 ──
+async function confirmDeleteAll() {
+  if (!confirm(`⚠️ ${currentSiteName} 현장의 모든 데이터를 삭제합니다.\n이 작업은 되돌릴 수 없습니다.\n\n정말 삭제하시겠습니까?`)) return;
+  if (!confirm('마지막 확인: 정말 삭제하시겠습니까?')) return;
+
+  setSyncBar(true, '데이터 삭제 중...');
+  try {
+    const snap = await db.collection('sites').doc(currentSiteCode)
+        .collection('photos').get();
+    const batch = db.batch();
+    snap.docs.forEach(d => batch.delete(d.ref));
+    await batch.commit();
+    allPhotos = [];
+    applyFilter();
+    updateStats();
+    setSyncBar(false);
+    alert('삭제 완료됐습니다.');
+  } catch(e) {
+    setSyncBar(false);
+    alert('삭제 실패: ' + e.message);
+  }
+}
+
+// ── 자동 로그인 (세션) ──
+window.onload = () => {
+  const code = sessionStorage.getItem('pm_code');
+  const name = sessionStorage.getItem('pm_name');
+  const site = sessionStorage.getItem('pm_site');
+  const admin = sessionStorage.getItem('pm_admin');
+  if (code && name) {
+    currentSiteCode = code;
+    currentUserName = name;
+    currentSiteName = site || '';
+    isAdmin = admin === '1';
+    document.getElementById('inp-code').value = code;
+    document.getElementById('inp-name').value = name;
+    showMain();
+  }
+};
+</script>
+</body>
+</html>
