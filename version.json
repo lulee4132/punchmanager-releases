@@ -1,5 +1,5 @@
 {
-  "version": "1.0.3",
-  "apk_url": "https://github.com/lulee4132/punchmanager-releases/releases/download/v1.0.3/app-release.apk",
-  "release_notes": "Firebase 연동, 현장 개설/참여, 사진 클라우드 동기화 기능 추가"
+  "version": "1.0.4",
+  "apk_url": "https://github.com/lulee4132/punchmanager-releases/releases/download/v1.0.4/app-release.apk",
+  "release_notes": "로컬에서 삭제하면 Firebase 반영 기능 추가"
 }
