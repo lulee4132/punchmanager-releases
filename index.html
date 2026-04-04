@@ -74,6 +74,10 @@ tr:hover td{background:rgba(255,255,255,.02)}
 .badge-open{background:rgba(92,107,192,.2);color:#AAB0E0}
 .badge-done{background:rgba(46,204,113,.15);color:var(--green)}
 .user-tag{font-size:11px;color:var(--muted)}
+.btn-del-row{padding:5px 10px;border-radius:6px;font-size:11px;font-weight:700;cursor:pointer;border:1px solid rgba(231,76,60,.4);background:rgba(231,76,60,.1);color:var(--red);transition:all .2s;white-space:nowrap}
+.btn-del-row:hover{background:var(--red);color:#fff;border-color:var(--red)}
+.btn-del-row:disabled{opacity:.4;cursor:not-allowed}
+.row-deleting td{opacity:.4;pointer-events:none}
 
 /* ── 이미지 모달 ── */
 #img-modal{display:none;position:fixed;inset:0;background:rgba(0,0,0,.9);z-index:1000;align-items:center;justify-content:center;padding:24px}
@@ -372,7 +376,10 @@ function renderTable(photos) {
     const badge = p.status === 'done'
       ? `<span class="badge badge-done">완료</span>`
       : `<span class="badge badge-open">진행중</span>`;
-    return `<tr>
+    const delBtn = isAdmin
+      ? `<td><button class="btn-del-row" onclick="deleteRow('${p.id}', this)">🗑️ 삭제</button></td>`
+      : '';
+    return `<tr id="row-${p.id}">
       <td>${thumb}</td>
       <td>${p.dong || '-'}<br><small style="color:var(--muted)">${p.ho ? p.ho+'호' : ''} ${p.room || ''}</small></td>
       <td>${p.gj || '-'}</td>
@@ -380,13 +387,14 @@ function renderTable(photos) {
       <td style="max-width:200px;white-space:normal">${p.content || '-'}</td>
       <td>${badge}</td>
       <td>${p.date || '-'}<br><span class="user-tag">${p.userName || '-'}</span></td>
+      ${delBtn}
     </tr>`;
   }).join('');
 
   document.getElementById('tbl-body').innerHTML = `
     <table>
       <thead><tr>
-        <th>사진</th><th>위치</th><th>공종</th><th>상세위치</th><th>내용</th><th>상태</th><th>일자/작성자</th>
+        <th>사진</th><th>위치</th><th>공종</th><th>상세위치</th><th>내용</th><th>상태</th><th>일자/작성자</th>${isAdmin ? '<th></th>' : ''}
       </tr></thead>
       <tbody>${rows}</tbody>
     </table>`;
@@ -437,6 +445,46 @@ function exportExcel() {
   ws['!cols'] = [8,6,8,8,15,20,6,10,8,40].map(w=>({wch:w}));
   XLSX.utils.book_append_sheet(wb, ws, '펀치리스트');
   XLSX.writeFile(wb, `펀치리스트_${currentSiteName}_${new Date().toISOString().slice(0,10)}.xlsx`);
+}
+
+// ── 개별 삭제 ──
+async function deleteRow(photoId, btn) {
+  if (!confirm('이 항목을 삭제하시겠습니까?')) return;
+
+  btn.disabled = true;
+  btn.textContent = '삭제 중...';
+  const row = document.getElementById('row-' + photoId);
+  if (row) row.classList.add('row-deleting');
+
+  try {
+    await db.collection('sites').doc(currentSiteCode)
+        .collection('photos').doc(photoId).delete();
+
+    // allPhotos에서도 제거
+    allPhotos = allPhotos.filter(p => p.id !== photoId);
+    updateStats();
+
+    // 행 애니메이션 후 제거
+    if (row) {
+      row.style.transition = 'opacity .3s, max-height .3s';
+      row.style.opacity = '0';
+      setTimeout(() => {
+        row.remove();
+        // 테이블이 비었으면 empty 메시지 표시
+        const tbody = document.querySelector('#tbl-body tbody');
+        if (tbody && tbody.children.length === 0) {
+          document.getElementById('tbl-body').innerHTML = '<div class="empty">해당하는 항목이 없습니다</div>';
+        }
+        document.getElementById('tbl-count').textContent =
+          `${document.querySelectorAll('#tbl-body tbody tr').length}개`;
+      }, 300);
+    }
+  } catch(e) {
+    btn.disabled = false;
+    btn.textContent = '🗑️ 삭제';
+    if (row) row.classList.remove('row-deleting');
+    alert('삭제 실패: ' + e.message);
+  }
 }
 
 // ── 전체 삭제 ──
