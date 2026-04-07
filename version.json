@@ -1,5 +1,5 @@
 {
-  "version": "1.0.5",
-  "apk_url": "https://github.com/lulee4132/punchmanager-releases/releases/download/v1.0.5/app-release.apk",
-  "release_notes": "공용부 위치 추가, 사진 편집 기능, Firebase 동기화 개선, 화이트보드 크기 개선"
+  "version": "1.0.6",
+  "apk_url": "https://github.com/lulee4132/punchmanager-releases/releases/download/v1.0.6/app-release.apk",
+  "release_notes": "내용이 길면 글씨가 잘리는 오류 수정, 데드라인 알림 기능 추가"
 }
