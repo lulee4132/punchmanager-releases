@@ -208,6 +208,7 @@ tr:hover td{background:rgba(255,255,255,.02)}
     <div class="topbar-code" id="tb-code"></div>
     <button class="btn-sm btn-excel" onclick="exportExcel()">📊 엑셀</button>
     <button class="btn-sm btn-upload" onclick="openUploadModal()">📤 업로드</button>
+    <button class="btn-sm" style="background:var(--card2);color:var(--muted)" onclick="window.open('https://github.com/lulee4132/punchmanager-releases/blob/main/%EC%82%AC%EC%A7%84%EB%8C%80%EC%A7%80_%EC%83%9D%EC%84%B1%EA%B8%B0.html','_blank')" title="사진대지 생성기">🎨 사진대지</button>
     <button class="btn-sm btn-logout" onclick="doLogout()">로그아웃</button>
   </div>
 
@@ -870,8 +871,10 @@ async function compositeBoard(file, { dong, ho, room, gj, content, wichi }) {
         const dateStr = `${now.getFullYear()}.${String(now.getMonth()+1).padStart(2,'0')}.${String(now.getDate()).padStart(2,'0')}`;
 
         // 위치: 동+호+세부위치 결합 (Flutter getWichi()와 동일)
+        // ho가 이미 "호"로 끝나면 그대로, 아니면 "호" 붙임
         const hoFormatted = ho ? (ho.endsWith('호') ? ho : ho + '호') : '';
         const wichiParts = [dong, hoFormatted, room].filter(Boolean).join(' ');
+
         const rows = [
           ['공사명', siteName || '—'],
           ['공 종',  gj || '—'],
