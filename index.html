@@ -73,6 +73,8 @@ tr:hover td{background:rgba(255,255,255,.02)}
 .badge{display:inline-block;padding:3px 8px;border-radius:6px;font-size:11px;font-weight:700}
 .badge-open{background:rgba(92,107,192,.2);color:#AAB0E0}
 .badge-done{background:rgba(46,204,113,.15);color:var(--green)}
+.badge-click{cursor:pointer;transition:transform .15s,box-shadow .15s}
+.badge-click:hover{transform:scale(1.1);box-shadow:0 0 8px rgba(245,166,35,.3)}
 .user-tag{font-size:11px;color:var(--muted)}
 .btn-del-row{padding:5px 10px;border-radius:6px;font-size:11px;font-weight:700;cursor:pointer;border:1px solid rgba(231,76,60,.4);background:rgba(231,76,60,.1);color:var(--red);transition:all .2s;white-space:nowrap}
 .btn-del-row:hover{background:var(--red);color:#fff;border-color:var(--red)}
@@ -130,6 +132,13 @@ tr:hover td{background:rgba(255,255,255,.02)}
 .radio-opt{display:flex;align-items:center;gap:6px;cursor:pointer;font-size:14px;padding:8px 14px;background:var(--card2);border:1px solid var(--border);border-radius:8px;transition:border-color .2s}
 .radio-opt input[type=radio]{accent-color:var(--accent)}
 .radio-opt:has(input:checked){border-color:var(--accent);background:rgba(245,166,35,.1)}
+
+/* 보드판 토글 */
+.board-toggle{display:flex;align-items:center;gap:10px;padding:10px 14px;background:var(--card2);border:1px solid var(--border);border-radius:10px;cursor:pointer;transition:border-color .2s;margin-bottom:20px;user-select:none}
+.board-toggle:has(input:checked){border-color:var(--accent);background:rgba(245,166,35,.08)}
+.board-toggle input[type=checkbox]{accent-color:var(--accent);width:18px;height:18px;cursor:pointer}
+.board-toggle .bt-label{font-size:14px;font-weight:600}
+.board-toggle .bt-sub{font-size:11px;color:var(--muted)}
 
 /* 업로드 진행 */
 .progress-wrap{margin-bottom:16px;display:none}
@@ -260,6 +269,15 @@ tr:hover td{background:rgba(255,255,255,.02)}
         <small>Ctrl+V 붙여넣기도 가능합니다</small>
       </div>
     </div>
+
+    <!-- 보드판 토글 -->
+    <label class="board-toggle">
+      <input type="checkbox" id="chk-board" checked>
+      <div>
+        <div class="bt-label">📋 동산보드판 넣기</div>
+        <div class="bt-sub">사진에 공사명·공종·위치·내용·일자 보드를 합성합니다</div>
+      </div>
+    </label>
 
     <!-- 폼 -->
     <div class="upload-grid">
@@ -537,9 +555,17 @@ function renderTable(photos) {
     const thumb = p.url
       ? `<img class="thumb" src="${p.url}" onclick="openImg('${p.url}','${esc(p.wichi)}','${esc(p.gj+' · '+p.date+' · '+p.userName)}')" loading="lazy">`
       : `<div class="no-thumb">📷</div>`;
-    const badge = p.status === 'done'
-      ? `<span class="badge badge-done">완료</span>`
-      : `<span class="badge badge-open">진행중</span>`;
+    const isOwn = p.userName === currentUserName;
+    let badge;
+    if (isOwn) {
+      badge = p.status === 'done'
+        ? `<span class="badge badge-done badge-click" onclick="toggleStatus('${p.id}')" title="클릭→진행중">완료</span>`
+        : `<span class="badge badge-open badge-click" onclick="toggleStatus('${p.id}')" title="클릭→완료">진행중</span>`;
+    } else {
+      badge = p.status === 'done'
+        ? `<span class="badge badge-done">완료</span>`
+        : `<span class="badge badge-open">진행중</span>`;
+    }
     const delBtn = isAdmin
       ? `<td><button class="btn-del-row" onclick="deleteRow('${p.id}',this)">🗑️ 삭제</button></td>`
       : '';
@@ -786,6 +812,7 @@ function resetUploadForm() {
   });
   document.getElementById('uf-content').value = '';
   document.querySelector('input[name="uf-status"][value="active"]').checked = true;
+  document.getElementById('chk-board').checked = true;
   document.getElementById('progress-wrap').style.display = 'none';
   document.getElementById('progress-fill').style.width = '0%';
   document.getElementById('upload-error').style.display = 'none';
@@ -798,6 +825,164 @@ function showUploadErr(msg) {
   const el = document.getElementById('upload-error');
   el.textContent = msg;
   el.style.display = 'block';
+}
+
+// ── 동산보드판 합성 ──
+async function compositeBoard(file, { dong, ho, room, gj, content, wichi }) {
+  return new Promise((resolve, reject) => {
+    const img = new Image();
+    img.onload = () => {
+      try {
+        // 16:10 크롭
+        const srcW = img.width, srcH = img.height;
+        const targetRatio = 16 / 10;
+        const srcRatio = srcW / srcH;
+        let cropW, cropH, cropX, cropY;
+        if (srcRatio > targetRatio) {
+          cropH = srcH; cropW = srcH * targetRatio;
+          cropX = (srcW - cropW) / 2; cropY = 0;
+        } else {
+          cropW = srcW; cropH = srcW / targetRatio;
+          cropX = 0; cropY = (srcH - cropH) / 2;
+        }
+
+        // 해상도 제한 (긴 변 1600px)
+        let outW = Math.round(cropW), outH = Math.round(cropH);
+        const maxSide = 1600;
+        if (outW > maxSide || outH > maxSide) {
+          const s = maxSide / Math.max(outW, outH);
+          outW = Math.round(outW * s);
+          outH = Math.round(outH * s);
+        }
+
+        const canvas = document.createElement('canvas');
+        canvas.width = outW; canvas.height = outH;
+        const ctx = canvas.getContext('2d');
+
+        // 크롭된 사진 그리기
+        ctx.drawImage(img, cropX, cropY, cropW, cropH, 0, 0, outW, outH);
+
+        const W = outW, H = outH;
+
+        // ── 화이트보드 그리기 ──
+        const siteName = currentSiteName || '';
+        const now = new Date();
+        const dateStr = `${now.getFullYear()}.${String(now.getMonth()+1).padStart(2,'0')}.${String(now.getDate()).padStart(2,'0')}`;
+
+        // 위치: 동+호+세부위치 결합 (Flutter getWichi()와 동일)
+        const wichiParts = [dong, ho ? ho + '호' : '', room].filter(Boolean).join(' ');
+
+        const rows = [
+          ['공사명', siteName || '—'],
+          ['공 종',  gj || '—'],
+          ['위 치',  wichiParts || '—'],
+          ['내 용',  content || '—'],
+          ['일 자',  dateStr],
+        ];
+
+        // 보드 크기 계산 (Flutter 앱과 동일: 행높이 = H*6.2%, 총 31%)
+        const rowH = H * 0.062;
+        const boardH = rowH * 5;
+        const fontSize = rowH * 0.60;
+        const hPad = rowH * 0.15;
+        const strokeW = W * 0.001;
+
+        // 레이블 최대 폭 측정
+        ctx.font = `bold ${fontSize}px -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif`;
+        let maxLblW = 0;
+        for (const r of rows) {
+          const m = ctx.measureText(r[0]);
+          if (m.width > maxLblW) maxLblW = m.width;
+        }
+        const labelW = maxLblW + hPad * 2;
+
+        // 값 최대 폭 측정
+        ctx.font = `bold ${fontSize}px -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif`;
+        let maxValW = 0;
+        for (const r of rows) {
+          const m = ctx.measureText(r[1]);
+          if (m.width > maxValW) maxValW = m.width;
+        }
+        let boardW = labelW + maxValW + hPad * 2;
+        boardW = Math.max(W * 0.25, Math.min(W * 0.70, boardW));
+
+        // 보드 위치: 좌측 하단
+        const bx = 0, by = H - boardH;
+
+        // 흰 배경
+        ctx.fillStyle = 'rgba(255,255,255,0.97)';
+        ctx.fillRect(bx, by, boardW, boardH);
+
+        // 외곽선
+        ctx.strokeStyle = '#888888';
+        ctx.lineWidth = strokeW;
+        ctx.strokeRect(bx, by, boardW, boardH);
+
+        for (let i = 0; i < rows.length; i++) {
+          const y = by + rowH * i;
+
+          // 행 구분선
+          if (i > 0) {
+            ctx.strokeStyle = '#CCCCCC';
+            ctx.lineWidth = strokeW * 0.7;
+            ctx.beginPath();
+            ctx.moveTo(bx, y); ctx.lineTo(bx + boardW, y);
+            ctx.stroke();
+          }
+
+          // 레이블 배경
+          ctx.fillStyle = '#EEEEEE';
+          ctx.fillRect(bx, y, labelW, rowH);
+
+          // 세로 구분선
+          ctx.strokeStyle = '#CCCCCC';
+          ctx.lineWidth = strokeW * 0.7;
+          ctx.beginPath();
+          ctx.moveTo(bx + labelW, y); ctx.lineTo(bx + labelW, y + rowH);
+          ctx.stroke();
+
+          // 레이블 텍스트
+          ctx.fillStyle = '#222222';
+          ctx.font = `bold ${fontSize}px -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif`;
+          ctx.textBaseline = 'middle';
+          ctx.fillText(rows[i][0], bx + hPad, y + rowH / 2);
+
+          // 값 텍스트
+          ctx.fillStyle = '#111111';
+          ctx.font = `bold ${fontSize}px -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif`;
+          // 클리핑: 값이 넘치지 않도록
+          ctx.save();
+          ctx.beginPath();
+          ctx.rect(bx + labelW, y, boardW - labelW, rowH);
+          ctx.clip();
+          ctx.fillText(rows[i][1], bx + labelW + hPad, y + rowH / 2);
+          ctx.restore();
+        }
+
+        // ── 워터마크: 우측 상단에 이름 ──
+        if (currentUserName) {
+          const wmFontSize = W * 0.025;
+          const wmPad = W * 0.015;
+          ctx.font = `bold ${wmFontSize}px -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif`;
+          ctx.textBaseline = 'top';
+          ctx.shadowColor = 'rgba(0,0,0,0.7)';
+          ctx.shadowOffsetX = 1; ctx.shadowOffsetY = 1; ctx.shadowBlur = 3;
+          ctx.fillStyle = '#FFFFFF';
+          const wmW = ctx.measureText(currentUserName).width;
+          ctx.fillText(currentUserName, W - wmW - wmPad, wmPad);
+          ctx.shadowColor = 'transparent';
+        }
+
+        // PNG로 변환
+        canvas.toBlob(blob => {
+          resolve(new File([blob], 'composited.png', { type: 'image/png' }));
+        }, 'image/png', 1.0);
+
+      } catch(err) { reject(err); }
+    };
+    img.onerror = () => reject(new Error('이미지 로드 실패'));
+    img.src = URL.createObjectURL(file);
+  });
 }
 
 // ── 실제 업로드 ──
@@ -831,8 +1016,17 @@ async function doUpload() {
       const lbl  = document.getElementById('progress-label');
       wrap.style.display = 'block';
 
+      // 보드판 합성 여부
+      let fileToUpload = uploadFile;
+      const useBoard = document.getElementById('chk-board').checked;
+      if (useBoard) {
+        lbl.textContent = '보드판 합성 중...';
+        fill.style.width = '5%';
+        fileToUpload = await compositeBoard(uploadFile, { dong, ho, room, gj, content, wichi });
+      }
+
       const ref  = storage.ref(`sites/${currentSiteCode}/photos/photo_${ts}.png`);
-      const task = ref.put(uploadFile);
+      const task = ref.put(fileToUpload);
 
       downloadUrl = await new Promise((resolve, reject) => {
         task.on('state_changed',
@@ -877,6 +1071,31 @@ async function doUpload() {
     btn.disabled = false;
     btn.textContent = '📤 업로드';
     document.getElementById('progress-wrap').style.display = 'none';
+  }
+}
+
+// ── 상태 토글 (자기가 올린 것만) ──
+async function toggleStatus(photoId) {
+  const photo = allPhotos.find(p => p.id === photoId);
+  if (!photo || photo.userName !== currentUserName) return;
+
+  const newStatus = photo.status === 'done' ? 'active' : 'done';
+  const badge = document.querySelector(`#row-${photoId} .badge`);
+  if (badge) {
+    badge.textContent = '변경 중...';
+    badge.style.opacity = '0.5';
+  }
+
+  try {
+    await db.collection('sites').doc(currentSiteCode)
+        .collection('photos').doc(photoId).update({ status: newStatus });
+
+    photo.status = newStatus;
+    updateStats();
+    applyFilter();
+  } catch(e) {
+    alert('상태 변경 실패: ' + e.message);
+    if (badge) { badge.style.opacity = '1'; }
   }
 }
 
