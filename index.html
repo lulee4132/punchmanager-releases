@@ -434,7 +434,22 @@ async function loadPhotos() {
     const snap = await db.collection('sites').doc(currentSiteCode)
         .collection('photos').orderBy('ts', 'desc').get();
 
-    allPhotos = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+    // ts 기준 중복 제거 - 같은 ts면 status가 'done'인 것 우선
+    const rawPhotos = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+    const tsMap = new Map();
+    for (const p of rawPhotos) {
+      const key = p.ts;
+      if (!tsMap.has(key)) {
+        tsMap.set(key, p);
+      } else {
+        const existing = tsMap.get(key);
+        // done 상태 우선, 같으면 최신 문서 ID 우선
+        if (p.status === 'done' && existing.status !== 'done') {
+          tsMap.set(key, p);
+        }
+      }
+    }
+    allPhotos = Array.from(tsMap.values());
     buildFilters();
     applyFilter();
     updateStats();
