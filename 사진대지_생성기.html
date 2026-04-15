@@ -1,0 +1,991 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>사진대지 생성기</title>
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=Noto+Sans+KR:wght@300;400;500;700&family=IBM+Plex+Mono:wght@400;600&display=swap');
+
+  :root {
+    --bg: #f0ede8;
+    --surface: #faf8f5;
+    --border: #c8c0b4;
+    --border-dark: #8a7f72;
+    --text: #1a1714;
+    --text-muted: #6b6259;
+    --accent: #1f3864;
+    --accent-light: #e8edf7;
+    --accent-hover: #152b50;
+    --danger: #8c2b2b;
+    --success: #2b6b3a;
+    --card: #ffffff;
+    --shadow: 0 2px 12px rgba(0,0,0,0.08);
+    --shadow-lg: 0 8px 32px rgba(0,0,0,0.14);
+  }
+
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+
+  body {
+    font-family: 'Noto Sans KR', sans-serif;
+    background: var(--bg);
+    color: var(--text);
+    min-height: 100vh;
+  }
+
+  header {
+    background: var(--accent);
+    color: #fff;
+    padding: 0 32px;
+    display: flex;
+    align-items: center;
+    gap: 20px;
+    height: 58px;
+  }
+
+  .header-badge {
+    font-family: 'IBM Plex Mono', monospace;
+    font-size: 10px;
+    letter-spacing: 3px;
+    text-transform: uppercase;
+    color: #8cb3e8;
+    background: rgba(255,255,255,0.1);
+    padding: 4px 10px;
+    border-radius: 2px;
+  }
+
+  .header-title { font-size: 17px; font-weight: 700; letter-spacing: 5px; }
+
+  .main {
+    max-width: 1100px;
+    margin: 0 auto;
+    padding: 36px 24px 110px;
+  }
+
+  .sec-label {
+    font-size: 10px; font-weight: 700; letter-spacing: 3px; text-transform: uppercase;
+    color: var(--text-muted); margin-bottom: 14px;
+    display: flex; align-items: center; gap: 10px;
+  }
+  .sec-label::after { content:''; flex:1; height:1px; background:var(--border); }
+
+  /* ── info note ── */
+  .info-note {
+    font-size: 12px; color: var(--text-muted); margin-bottom: 20px;
+    padding: 10px 14px; background: var(--accent-light);
+    border-left: 3px solid var(--accent); border-radius: 0 3px 3px 0;
+    line-height: 1.6;
+  }
+
+  /* ── default fields ── */
+  .def-grid {
+    display: grid; grid-template-columns: repeat(4,1fr); gap: 12px; margin-bottom: 28px;
+  }
+  @media(max-width:720px){ .def-grid{ grid-template-columns:1fr 1fr; } }
+
+  .field label {
+    display:block; font-size:10px; font-weight:700; letter-spacing:2px;
+    text-transform:uppercase; color:var(--text-muted); margin-bottom:5px;
+  }
+  .field input {
+    width:100%; border:1px solid var(--border); border-radius:3px;
+    padding:9px 12px; font-family:'Noto Sans KR',sans-serif; font-size:13px;
+    background:var(--surface); color:var(--text); outline:none;
+    transition:border-color .15s, background .15s;
+  }
+  .field input:focus { border-color:var(--accent); background:var(--card); }
+
+  /* ── settings ── */
+  .settings-row {
+    display:flex; flex-wrap:wrap; gap:20px; align-items:center;
+    padding:14px 18px; background:var(--surface); border:1px solid var(--border);
+    border-radius:4px; margin-bottom:32px;
+  }
+  .settings-item { display:flex; align-items:center; gap:10px; font-size:13px; font-weight:500; }
+  .settings-item input[type=range] { width:130px; accent-color:var(--accent); }
+  .settings-val { font-family:'IBM Plex Mono',monospace; font-size:13px; font-weight:600; color:var(--accent); min-width:65px; }
+
+  /* ── drop zone ── */
+  .drop-zone {
+    border:2px dashed var(--border-dark); border-radius:4px; padding:52px 32px;
+    text-align:center; cursor:pointer; background:var(--surface); position:relative;
+    transition:all .2s; margin-bottom:32px;
+  }
+  .drop-zone:hover, .drop-zone.drag-over { border-color:var(--accent); background:var(--accent-light); }
+  .drop-zone input[type=file] { position:absolute; inset:0; opacity:0; cursor:pointer; width:100%; height:100%; }
+  .drop-icon { font-size:44px; margin-bottom:14px; }
+  .drop-title { font-size:16px; font-weight:700; margin-bottom:6px; }
+  .drop-sub { font-size:13px; color:var(--text-muted); line-height:1.6; }
+  .drop-pill {
+    display:inline-block; background:var(--accent); color:#fff;
+    font-size:11px; font-weight:700; padding:3px 12px; border-radius:20px; margin-top:12px; letter-spacing:1px;
+  }
+
+  /* ── page blocks ── */
+  .pages-section { margin-bottom:32px; }
+  .pages-header { display:flex; align-items:center; margin-bottom:14px; gap:16px; }
+  .pages-header .sec-label { flex:1; margin-bottom:0; }
+  .count-info { font-family:'IBM Plex Mono',monospace; font-size:12px; color:var(--text-muted); }
+  .count-info strong { color:var(--accent); font-size:18px; }
+  .btn-ghost {
+    background:none; border:1px solid var(--border); padding:5px 12px; font-size:12px;
+    font-family:'Noto Sans KR',sans-serif; cursor:pointer; border-radius:3px;
+    color:var(--danger); transition:all .15s;
+  }
+  .btn-ghost:hover { background:#fae8e8; border-color:var(--danger); }
+
+  /* ── Excel page block (4 slots per xlsm page) ── */
+  .xl-page-block {
+    background:var(--card); border:1px solid var(--border); border-radius:4px;
+    overflow:hidden; box-shadow:var(--shadow); margin-bottom:16px;
+  }
+  .xl-page-header {
+    background:var(--accent); color:#fff; padding:7px 16px;
+    font-size:11px; font-weight:700; letter-spacing:2px;
+    display:flex; align-items:center; gap:10px;
+  }
+  .xl-page-header span { opacity:.6; font-weight:400; }
+
+  /* 2x2 grid of 4 photo slots */
+  .xl-slots-grid {
+    display:grid; grid-template-columns:1fr 1fr; border-bottom:1px solid var(--border);
+  }
+  .xl-slot {
+    border-right:1px solid var(--border); border-bottom:1px solid var(--border);
+    display:flex; flex-direction:column;
+  }
+  .xl-slot:nth-child(2n) { border-right:none; }
+  .xl-slot:nth-child(3), .xl-slot:nth-child(4) { border-bottom:none; }
+
+  .slot-photo {
+    position:relative; background:var(--bg); flex:1;
+  }
+  .slot-photo img {
+    width:100%; aspect-ratio:3/2; object-fit:cover; display:block;
+  }
+  .slot-empty {
+    aspect-ratio:3/2; display:flex; align-items:center; justify-content:center;
+    flex-direction:column; gap:6px; color:var(--border-dark); font-size:12px;
+  }
+  .slot-num {
+    position:absolute; top:6px; left:6px; background:var(--accent); color:#fff;
+    font-family:'IBM Plex Mono',monospace; font-size:10px; font-weight:700;
+    min-width:20px; height:20px; border-radius:10px; display:flex; align-items:center; justify-content:center; padding:0 5px;
+  }
+  .slot-del {
+    position:absolute; top:6px; right:6px; background:rgba(0,0,0,.55); border:none;
+    cursor:pointer; color:#fff; font-size:12px; width:22px; height:22px; border-radius:50%;
+    display:flex; align-items:center; justify-content:center; transition:background .15s;
+  }
+  .slot-del:hover { background:rgba(140,43,43,.9); }
+  .slot-pic-label {
+    position:absolute; bottom:0; left:0; right:0;
+    background:rgba(0,0,0,.35); color:#fff;
+    font-size:10px; padding:3px 7px; text-align:center;
+    font-family:'IBM Plex Mono',monospace; font-weight:600; letter-spacing:1px;
+  }
+
+  /* meta below each slot */
+  .slot-meta {
+    padding:8px 10px; border-top:1px solid var(--border);
+    display:grid; grid-template-columns:auto 1fr auto 1fr; gap:4px 6px; align-items:center;
+  }
+  .ml { font-size:10px; font-weight:700; color:var(--text-muted); white-space:nowrap; letter-spacing:0.5px; }
+  .mi {
+    border:1px solid var(--border); border-radius:2px; padding:3px 6px;
+    font-family:'Noto Sans KR',sans-serif; font-size:11px;
+    background:var(--surface); color:var(--text); outline:none; width:100%;
+    transition:border-color .15s;
+  }
+  .mi:focus { border-color:var(--accent); background:#fff; }
+
+  /* ── status / bottom ── */
+  .status-bar { padding:12px 16px; border-radius:4px; font-size:13px; font-weight:500; display:none; margin-top:12px; }
+  .status-bar.show { display:block; }
+  .status-bar.info  { background:var(--accent-light); color:var(--accent); border:1px solid #b8c8e8; }
+  .status-bar.success { background:#e8f5ec; color:var(--success); border:1px solid #b4d8bd; }
+  .status-bar.error { background:#fae8e8; color:var(--danger); border:1px solid #d8b4b4; }
+
+  .bottom-bar {
+    position:fixed; bottom:0; left:0; right:0; background:var(--card);
+    border-top:1px solid var(--border); padding:14px 24px;
+    display:flex; justify-content:center; gap:12px; z-index:100;
+    box-shadow:0 -4px 20px rgba(0,0,0,.08);
+  }
+  .btn {
+    display:inline-flex; align-items:center; gap:8px; padding:13px 30px;
+    border-radius:3px; font-family:'Noto Sans KR',sans-serif; font-size:14px;
+    font-weight:700; cursor:pointer; border:none; letter-spacing:1px; transition:all .15s;
+  }
+  .btn-primary { background:var(--accent); color:#fff; }
+  .btn-primary:hover:not(:disabled) { background:var(--accent-hover); transform:translateY(-1px); box-shadow:0 4px 18px rgba(31,56,100,.35); }
+  .btn-primary:disabled { opacity:.38; cursor:not-allowed; }
+  .btn-outline { background:transparent; color:var(--text); border:1px solid var(--border); }
+  .btn-outline:hover { background:var(--bg); border-color:var(--border-dark); }
+
+  .progress-overlay { position:fixed; inset:0; background:rgba(0,0,0,.52); display:none; align-items:center; justify-content:center; z-index:999; }
+  .progress-overlay.show { display:flex; }
+  .progress-box { background:var(--card); border-radius:6px; padding:44px 60px; text-align:center; box-shadow:var(--shadow-lg); min-width:320px; }
+  .spinner { width:48px; height:48px; border:4px solid var(--border); border-top-color:var(--accent); border-radius:50%; animation:spin .8s linear infinite; margin:0 auto 22px; }
+  @keyframes spin { to { transform:rotate(360deg); } }
+  .progress-label { font-size:16px; font-weight:700; margin-bottom:8px; }
+  .progress-sub { font-size:13px; color:var(--text-muted); }
+</style>
+</head>
+<body>
+
+<header>
+  <div class="header-badge">PHOTO DOC</div>
+  <div class="header-title">사 진 대 지 생 성 기</div>
+</header>
+
+<div class="main">
+
+  <div class="sec-label">공통 기본값 <small style="font-size:9px;letter-spacing:1px;font-weight:400;">(선택사항 — 각 사진별 개별 수정 가능)</small></div>
+  <div class="def-grid">
+    <div class="field"><label>공종</label><input type="text" id="defWork" placeholder="예: 방수공사" oninput="applyDefs()"></div>
+    <div class="field"><label>일자</label><input type="text" id="defDate" placeholder="예: 2025-07-19" oninput="applyDefs()"></div>
+    <div class="field"><label>위치</label><input type="text" id="defLoc"  placeholder="예: 105동 6~10F"  oninput="applyDefs()"></div>
+    <div class="field"><label>내용</label><input type="text" id="defContent" placeholder="예: ALC 시공"   oninput="applyDefs()"></div>
+  </div>
+
+  <div class="sec-label">이미지 압축 설정</div>
+  <div class="settings-row">
+    <div class="settings-item">
+      <span>목표 용량</span>
+      <input type="range" id="targetKB" min="150" max="800" value="400" step="50">
+      <span class="settings-val" id="kbVal">400 KB / 장</span>
+    </div>
+    <span style="font-size:12px;color:var(--text-muted);">원본을 자동 압축 삽입 · 사진 수에 관계없이 하나의 엑셀 파일로 다운로드 · 페이지당 사진 2장</span>
+  </div>
+
+  <div class="sec-label">사진 업로드</div>
+  <div class="drop-zone" id="dropZone">
+    <input type="file" id="fileInput" multiple accept="image/*">
+    <div class="drop-icon">📂</div>
+    <div class="drop-title">사진을 끌어놓거나 클릭하여 선택</div>
+    <div class="drop-sub">JPG · PNG · HEIC 등 이미지 파일<br>몇 장이든 하나의 엑셀 파일로 다운로드됩니다</div>
+    <div class="drop-pill">다중 선택 지원</div>
+  </div>
+
+  <div id="pagesSection" class="pages-section" style="display:none;">
+    <div class="pages-header">
+      <div class="sec-label">업로드된 사진 구성</div>
+      <div class="count-info"><strong id="photoCount">0</strong>장 &nbsp;/&nbsp; <span id="xlCount">0</span>페이지</div>
+      <button class="btn-ghost" onclick="clearAll()">전체 삭제</button>
+    </div>
+    <div id="pagesList"></div>
+  </div>
+
+  <div id="statusBar" class="status-bar"></div>
+</div>
+
+<div class="bottom-bar">
+  <button class="btn btn-outline" onclick="clearAll()">초기화</button>
+  <button class="btn btn-primary" id="dlBtn" disabled onclick="startGenerate()">
+    📥 &nbsp;엑셀 사진대지 다운로드
+  </button>
+</div>
+
+<div class="progress-overlay" id="progressOverlay">
+  <div class="progress-box">
+    <div class="spinner"></div>
+    <div class="progress-label" id="progLabel">처리 중...</div>
+    <div class="progress-sub" id="progSub">잠시만 기다려 주세요</div>
+  </div>
+</div>
+
+<script>
+// ── State ──────────────────────────────────────────────────────────────────
+// photos[i] = { name, dataUrl, work, date, loc, content }
+let photos = [];
+
+// Today's date in YYYY-MM-DD
+function todayStr() {
+  const d = new Date();
+  const y = d.getFullYear();
+  const m = String(d.getMonth()+1).padStart(2,'0');
+  const dd = String(d.getDate()).padStart(2,'0');
+  return `${y}-${m}-${dd}`;
+}
+
+// ── Slider ─────────────────────────────────────────────────────────────────
+document.getElementById('targetKB').addEventListener('input', function() {
+  document.getElementById('kbVal').textContent = this.value + ' KB / 장';
+});
+
+// Pre-fill today's date into the date default field
+document.getElementById('defDate').value = todayStr();
+
+// ── Drop zone ───────────────────────────────────────────────────────────────
+const dz = document.getElementById('dropZone');
+const fi = document.getElementById('fileInput');
+
+dz.addEventListener('dragover', e => { e.preventDefault(); dz.classList.add('drag-over'); });
+dz.addEventListener('dragleave', () => dz.classList.remove('drag-over'));
+dz.addEventListener('drop', e => { e.preventDefault(); dz.classList.remove('drag-over'); addFiles(Array.from(e.dataTransfer.files).filter(f => f.type.startsWith('image/'))); });
+fi.addEventListener('change', () => { addFiles(Array.from(fi.files)); fi.value = ''; });
+
+function getDefs() {
+  return {
+    work:    document.getElementById('defWork').value,
+    date:    document.getElementById('defDate').value,
+    loc:     document.getElementById('defLoc').value,
+    content: document.getElementById('defContent').value,
+  };
+}
+
+function addFiles(files) {
+  const d = getDefs();
+  files.forEach(file => {
+    const reader = new FileReader();
+    reader.onload = e => {
+      photos.push({
+        name: file.name, dataUrl: e.target.result,
+        work: d.work,
+        date: d.date || todayStr(),  // always default to today if blank
+        loc:  d.loc,
+        content: d.content,
+      });
+      renderPages();
+    };
+    reader.readAsDataURL(file);
+  });
+}
+
+function applyDefs() {
+  const d = getDefs();
+  photos.forEach((p, i) => {
+    ['work','date','loc','content'].forEach(k => {
+      const inp = document.getElementById(`mi_${k}_${i}`);
+      if (inp && inp.value === '') { inp.value = d[k]; p[k] = d[k]; }
+    });
+  });
+}
+
+function updatePhoto(i, key, val) { photos[i][key] = val; }
+
+function removePhoto(i) { photos.splice(i, 1); renderPages(); }
+
+function clearAll() {
+  photos = []; renderPages();
+  document.getElementById('statusBar').className = 'status-bar';
+}
+
+function esc(s) { return (s||'').replace(/&/g,'&amp;').replace(/"/g,'&quot;').replace(/</g,'&lt;'); }
+
+// ── Render ─────────────────────────────────────────────────────────────────
+// xlsm: 1 file = 8 photos (4 pages × 2 photos/page)
+// Layout: 4 pages horizontally (A-J, K-T, U-AD, AE-AN), each page = rows 1-40
+// Each xlsm-page has slots: PIC1 (top-left), PIC3 (top-right), PIC2 (bot-left), PIC4 (bot-right)
+// ...but in our UI we show them as 4 slots per "excel block":
+//   slot 0 = PICTURE 1 (page1 top)
+//   slot 1 = PICTURE 3 (page2 top)
+//   slot 2 = PICTURE 5 (page3 top)  -- wait, re-check
+//
+// Actually: the 4 xl pages are PRINTED SEPARATELY (each is one A4 portrait page)
+// Each xl page has 2 photos:
+//   Page 1: PICTURE 1 (top), PICTURE 2 (bottom)
+//   Page 2: PICTURE 3 (top), PICTURE 4 (bottom)
+//   Page 3: PICTURE 5 (top), PICTURE 6 (bottom)
+//   Page 4: PICTURE 7 (top), PICTURE 8 (bottom)
+//
+// So 1 xlsx = 8 photos. UI shows each group of 8 as one "xl file block"
+
+function renderPages() {
+  const section = document.getElementById('pagesSection');
+  const list    = document.getElementById('pagesList');
+  const countEl = document.getElementById('photoCount');
+  const xlEl    = document.getElementById('xlCount');
+
+  if (!photos.length) {
+    section.style.display = 'none';
+    document.getElementById('dlBtn').disabled = true;
+    return;
+  }
+  section.style.display = 'block';
+  document.getElementById('dlBtn').disabled = false;
+  countEl.textContent = photos.length;
+  const pageCount = Math.ceil(photos.length / 2);
+  xlEl.textContent = pageCount;
+
+  list.innerHTML = '';
+
+  const block = document.createElement('div');
+  block.className = 'xl-page-block';
+
+  const header = document.createElement('div');
+  header.className = 'xl-page-header';
+  header.innerHTML = `📄 엑셀 파일 1개 <span>(${photos.length}장 · ${pageCount}페이지)</span>`;
+  block.appendChild(header);
+
+  const outerGrid = document.createElement('div');
+  outerGrid.style.cssText = `display:grid;grid-template-columns:repeat(${pageCount},minmax(160px,1fr));overflow-x:auto;`;
+
+  for (let page = 0; page < pageCount; page++) {
+    const col = document.createElement('div');
+    col.style.cssText = `border-right:1px solid var(--border);${page===pageCount-1?'border-right:none':''}`;
+
+    const pageHeader = document.createElement('div');
+    pageHeader.style.cssText = 'padding:5px 8px;font-size:10px;font-weight:700;letter-spacing:1px;color:var(--text-muted);background:var(--bg);border-bottom:1px solid var(--border);text-align:center;';
+    pageHeader.textContent = `페이지 ${page + 1}`;
+    col.appendChild(pageHeader);
+
+    // 2 photo slots per page (top=slot0, bottom=slot1)
+    for (let slot = 0; slot < 2; slot++) {
+      const photoIdx = page * 2 + slot;
+      const picNum   = photoIdx + 1;
+      const p        = photos[photoIdx] || null;
+
+        const slotDiv = document.createElement('div');
+        slotDiv.className = 'xl-slot';
+        slotDiv.style.cssText = slot === 0 ? 'border-bottom:1px solid var(--border);' : '';
+
+        const photoDiv = document.createElement('div');
+        photoDiv.className = 'slot-photo';
+
+        if (p) {
+          photoDiv.innerHTML = `
+            <img src="${p.dataUrl}" alt="">
+            <div class="slot-num">${photoIdx + 1}</div>
+            <div class="slot-pic-label">PICTURE ${picNum}</div>
+            <button class="slot-del" onclick="removePhoto(${photoIdx})" title="삭제">✕</button>
+          `;
+        } else {
+          photoDiv.innerHTML = `
+            <div class="slot-empty">
+              <span style="font-size:22px;opacity:.4;">📷</span>
+              <span>PICTURE ${picNum}</span>
+              <span style="font-size:10px;opacity:.6;">빈 슬롯</span>
+            </div>
+          `;
+        }
+
+        slotDiv.appendChild(photoDiv);
+
+        // Meta inputs
+        if (p) {
+          const meta = document.createElement('div');
+          meta.className = 'slot-meta';
+          meta.innerHTML = `
+            <span class="ml">공종</span>
+            <input class="mi" id="mi_work_${photoIdx}" value="${esc(p.work)}" oninput="updatePhoto(${photoIdx},'work',this.value)" placeholder="공종">
+            <span class="ml">일자</span>
+            <input class="mi" id="mi_date_${photoIdx}" value="${esc(p.date)}" oninput="updatePhoto(${photoIdx},'date',this.value)" placeholder="일자">
+            <span class="ml">위치</span>
+            <input class="mi" id="mi_loc_${photoIdx}" value="${esc(p.loc)}" oninput="updatePhoto(${photoIdx},'loc',this.value)" placeholder="위치">
+            <span class="ml">내용</span>
+            <input class="mi" id="mi_content_${photoIdx}" value="${esc(p.content)}" oninput="updatePhoto(${photoIdx},'content',this.value)" placeholder="내용">
+          `;
+          slotDiv.appendChild(meta);
+        }
+
+        col.appendChild(slotDiv);
+      }
+
+      outerGrid.appendChild(col);
+  }
+
+  block.appendChild(outerGrid);
+  list.appendChild(block);
+}
+
+// ── Compress ───────────────────────────────────────────────────────────────
+function compressImage(dataUrl, targetKB) {
+  return new Promise(resolve => {
+    const img = new Image();
+    img.onload = () => {
+      const canvas = document.createElement('canvas');
+      let W = img.width, H = img.height;
+      if (W > 2400 || H > 2400) { const r = Math.min(2400/W,2400/H); W=Math.round(W*r); H=Math.round(H*r); }
+      canvas.width=W; canvas.height=H;
+      canvas.getContext('2d').drawImage(img,0,0,W,H);
+      let lo=0.05,hi=0.95,best=null;
+      for(let i=0;i<12;i++){
+        const q=(lo+hi)/2, d=canvas.toDataURL('image/jpeg',q);
+        if(d.length*3/4/1024<=targetKB){best=d;lo=q;}else hi=q;
+        if(hi-lo<0.01)break;
+      }
+      resolve(best||canvas.toDataURL('image/jpeg',0.05));
+    };
+    img.src=dataUrl;
+  });
+}
+
+// ── Progress ───────────────────────────────────────────────────────────────
+function showProg(l,s){document.getElementById('progLabel').textContent=l;document.getElementById('progSub').textContent=s;document.getElementById('progressOverlay').classList.add('show');}
+function setProg(l,s){document.getElementById('progLabel').textContent=l;document.getElementById('progSub').textContent=s;}
+function hideProg(){document.getElementById('progressOverlay').classList.remove('show');}
+function setStatus(type,msg){const b=document.getElementById('statusBar');b.className='status-bar show '+type;b.textContent=msg;}
+
+// ── Generate ───────────────────────────────────────────────────────────────
+async function startGenerate() {
+  if(!photos.length) return;
+  const targetKB = parseInt(document.getElementById('targetKB').value);
+  const pageCount = Math.ceil(photos.length / 2);
+
+  showProg('사진 압축 중...', `0 / ${photos.length}`);
+
+  // Compress all
+  const compressed = [];
+  for(let i=0;i<photos.length;i++){
+    setProg(`사진 압축 중... (${i+1}/${photos.length})`, photos[i].name);
+    compressed.push(await compressImage(photos[i].dataUrl, targetKB));
+  }
+
+  setProg('엑셀 파일 생성 중...', `${photos.length}장 / ${pageCount}페이지`);
+  try {
+    await buildXLSX(compressed, photos);
+    hideProg();
+    setStatus('success',`✅ 완료! 총 ${photos.length}장 / ${pageCount}페이지 — 엑셀 파일 1개 다운로드됨`);
+  } catch(e) {
+    hideProg(); setStatus('error','오류: '+e.message); console.error(e);
+  }
+}
+
+// ── JSZip ──────────────────────────────────────────────────────────────────
+let _JSZip=null;
+function loadJSZip(){
+  if(_JSZip) return Promise.resolve(_JSZip);
+  return new Promise((res,rej)=>{
+    const s=document.createElement('script');
+    s.src='https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js';
+    s.onload=()=>{_JSZip=window.JSZip;res(_JSZip);};s.onerror=rej;
+    document.head.appendChild(s);
+  });
+}
+
+// ── XLSX builder (matches 사진대지_양식.xlsm exactly) ─────────────────────
+//
+// Structure: 4 xl-pages side-by-side horizontally
+//   Page N occupies columns: (N-1)*10+1 .. N*10  (A-J, K-T, U-AD, AE-AN)
+//   Rows 1-40
+//
+// Per page (cols relative, 1=leftmost of page):
+//   Row 1-2  : title "사진대지" merged col1:col10 (A:J for page1)
+//   Row 3-17 : PICTURE (2N-1) merged col2:col9
+//   Row 18   : 공종(col2,distributed) | value(col3:col5) | 일자(col6,distributed) | value(col7:col9)
+//   Row 19   : 위치(col2,distributed) | value(col3:col5) | 내용(col6,distributed) | value(col7:col9)
+//   Row 20-21: gap merged col1:col10
+//   Row 22-36: PICTURE (2N) merged col2:col9
+//   Row 37   : 공종 | value | 일자 | value
+//   Row 38   : 위치 | value | 내용 | value
+//   Row 39   : footer separator row
+//   Row 40   : page number row (left medium border bottom medium)
+//
+// Col widths (chars):  4.375, 8.5×8, 4.5  [exact from file]
+// Row heights: 16.5 for rows 1,2,20,21; 18.6 for photo/info rows; 17.25 for row 40
+//
+// Borders (from original styles):
+//  - title top-left corner cell: left-medium, top-medium (s55/border12)
+//  - title top middle: top-medium (s56/border13)
+//  - title top-right: right-medium, top-medium (s57/border14)
+//  - left margin (col1): left-medium (s60/border15)  - rows 3-19
+//  - right margin (col10): right-medium (s61/border16) - rows 3-19
+//  - gap row20-21 left: left-medium,bottom-medium (s58/border17)
+//  - gap row20-21 middle: bottom-medium (s52=font5+distributed)
+//  - photo area: all-thin (s5/border1, font5=돋움18pt bold)
+//  - info labels: all-thin (s2/border1, font2=돋움11pt, distributed)
+//  - info values: all-thin (s3/border1, font2=돋움11pt, center)
+//  - gap row top: top medium (left and right medium on edges)
+//  - bottom of page2: bottom-medium on last info rows
+//
+// Simplified border approach for clean reproduction:
+// We'll use medium outer borders per page block, thin inner.
+
+async function buildXLSX(images, photosMeta) {
+  const JSZip = await loadJSZip();
+  const zip   = new JSZip();
+
+  const PAGES = Math.ceil(photosMeta.length / 2);
+  const COLS_PER_PAGE = 10;
+
+  // ── Row heights scaled to fit A4 (297mm - 2×0.75" margin - 2×0.3" hf = 243.66mm = 690.7pt) ──
+  // Original heights summed to ~725pt (overflowed A4 by 12mm → extra blank page).
+  // Scale factor 0.9521 brings total to exactly 690.7pt = 243.66mm.
+  const ROW_HT = {
+    1: 15.71, 2: 15.71,
+    3: 15.71, 4: 15.71,
+    5: 17.71, 6: 17.71, 7: 17.71, 8: 17.71,
+    9: 19.28,
+    10: 17.71, 11: 17.71, 12: 17.71, 13: 17.71, 14: 17.71, 15: 17.71, 16: 17.71, 17: 17.71,
+    18: 17.71, 19: 17.71,
+    20: 15.71, 21: 15.71,
+    22: 17.71, 23: 17.71, 24: 17.71, 25: 17.71, 26: 17.71, 27: 17.71,
+    28: 17.71, 29: 17.71, 30: 17.71, 31: 17.71, 32: 17.71, 33: 17.71,
+    34: 17.71, 35: 17.71, 36: 17.71,
+    37: 15.71, 38: 15.71,
+    39: 15.71, 40: 16.43,
+  };
+
+  // ── Shared strings ──
+  const ss=[]; const ssMap={};
+  function SS(str){ if(ssMap[str]===undefined){ssMap[str]=ss.length;ss.push(str);} return ssMap[str]; }
+
+  // FIX #2: plain text, no manual spacing — Excel center alignment handles display
+  const S_TITLE = SS('사진대지');
+  const S_GONGJ = SS('공종');
+  const S_ILJA  = SS('일자');
+  const S_WICHI = SS('위치');
+  const S_NAEY  = SS('내용');
+
+  for(let i=1;i<=photosMeta.length;i++) SS(`PICTURE ${i}`);
+  // FIX #5: register empty string so blank cells don't accidentally pick up index-based values
+  const S_EMPTY = SS('');
+  photosMeta.forEach(p => { SS(p.work||''); SS(p.date||''); SS(p.loc||''); SS(p.content||''); });
+
+  // ── Row/merge data ──
+  // Style indexes (defined in cellXfs below):
+  // 0=default  1=title-TL  2=title-mid  3=title-TR
+  // 4=left-margin(left-med)  5=right-margin(right-med)
+  // 6=photo(all-thin,center,bold18)  7=label(all-thin,center)  8=value(all-thin,center)
+  // 9=gap-left(left-med+bot-med)  10=gap-mid(bot-med)  11=gap-right(right-med+bot-med)
+  // 12=row37-38 left-edge(left-med only)  13=row37-38 right-edge(right-med only)
+  // 14=row40-A(left-med+bot-med)  15=row40-mid(bot-med)  16=row40-J(right-med+bot-med)
+
+  const merges = [];
+  const rowData = {};
+
+  function ensureRow(r){ if(!rowData[r]) rowData[r]={ht:ROW_HT[r]||null,cells:{}}; }
+  function setCell(r, absCol, t, v, s){ ensureRow(r); rowData[r].cells[absCol]={t,v,s}; }
+
+  function colLetter(n){
+    let s='';
+    while(n>0){s=String.fromCharCode(64+(n%26||26))+s;n=Math.floor((n-1)/26);}
+    return s;
+  }
+
+  for(let pg=0; pg<PAGES; pg++){
+    const base=pg*COLS_PER_PAGE;
+    const c1=base+1,c2=base+2,c3=base+3,c5=base+5,c6=base+6,c7=base+7,c9=base+9,c10=base+10;
+
+    const ph1 = photosMeta[pg*2]   || null;
+    const ph2 = photosMeta[pg*2+1] || null;
+    const p1  = pg*2+1, p2=pg*2+2; // PICTURE numbers
+
+    // ── Row 1-2: title (merged, bold outer border top) ──
+    merges.push(`${colLetter(c1)}1:${colLetter(c10)}2`);
+    setCell(1,c1,'s',S_TITLE,1);
+    for(let c=c2;c<=c9;c++) setCell(1,c,'s',S_EMPTY,2);
+    setCell(1,c10,'s',S_EMPTY,3);
+    // Row 2: just left/right outer
+    setCell(2,c1,'s',S_EMPTY,4);
+    setCell(2,c10,'s',S_EMPTY,5);
+
+    // ── Rows 3-17: photo 1 ──
+    merges.push(`${colLetter(c2)}3:${colLetter(c9)}17`);
+    setCell(3,c2,'s',SS(`PICTURE ${p1}`),6);
+    for(let r=3;r<=17;r++){
+      setCell(r,c1,'s',S_EMPTY,4);
+      setCell(r,c10,'s',S_EMPTY,5);
+    }
+
+    // ── Row 18: 공종/일자 ──
+    // FIX #3: set style on ALL cells in merged range so borders render correctly
+    merges.push(`${colLetter(c3)}18:${colLetter(c5)}18`);
+    merges.push(`${colLetter(c7)}18:${colLetter(c9)}18`);
+    setCell(18,c1,'s',S_EMPTY,4);
+    setCell(18,c2,'s',S_GONGJ,7);
+    // FIX #5: use SS() result for user values; empty string fallback
+    setCell(18,c3,'s',SS(ph1?ph1.work:''),8);
+    for(let c=c3+1;c<=c5;c++) setCell(18,c,'s',S_EMPTY,8);  // fill merged range cells
+    setCell(18,c6,'s',S_ILJA,7);
+    setCell(18,c7,'s',SS(ph1?ph1.date:''),8);
+    for(let c=c7+1;c<=c9;c++) setCell(18,c,'s',S_EMPTY,8);
+    setCell(18,c10,'s',S_EMPTY,5);
+
+    // ── Row 19: 위치/내용 ──
+    merges.push(`${colLetter(c3)}19:${colLetter(c5)}19`);
+    merges.push(`${colLetter(c7)}19:${colLetter(c9)}19`);
+    setCell(19,c1,'s',S_EMPTY,4);
+    setCell(19,c2,'s',S_WICHI,7);
+    setCell(19,c3,'s',SS(ph1?ph1.loc:''),8);
+    for(let c=c3+1;c<=c5;c++) setCell(19,c,'s',S_EMPTY,8);
+    setCell(19,c6,'s',S_NAEY,7);
+    setCell(19,c7,'s',SS(ph1?ph1.content:''),8);
+    for(let c=c7+1;c<=c9;c++) setCell(19,c,'s',S_EMPTY,8);
+    setCell(19,c10,'s',S_EMPTY,5);
+
+    // ── Rows 20-21: gap (merged, bottom medium border) ──
+    merges.push(`${colLetter(c1)}20:${colLetter(c10)}21`);
+    setCell(20,c1,'s',S_EMPTY,9);
+    for(let c=c2;c<=c9;c++) setCell(20,c,'s',S_EMPTY,10);
+    setCell(20,c10,'s',S_EMPTY,11);
+    setCell(21,c1,'s',S_EMPTY,4);
+    setCell(21,c10,'s',S_EMPTY,5);
+
+    // ── Rows 22-36: photo 2 ──
+    merges.push(`${colLetter(c2)}22:${colLetter(c9)}36`);
+    setCell(22,c2,'s',SS(`PICTURE ${p2}`),6);
+    for(let r=22;r<=36;r++){
+      setCell(r,c1,'s',S_EMPTY,4);
+      setCell(r,c10,'s',S_EMPTY,5);
+    }
+
+    // ── Row 37: 공종/일자 (FIX #4: use plain left-med only, NO bottom-med) ──
+    merges.push(`${colLetter(c3)}37:${colLetter(c5)}37`);
+    merges.push(`${colLetter(c7)}37:${colLetter(c9)}37`);
+    setCell(37,c1,'s',S_EMPTY,12);   // left-med only
+    setCell(37,c2,'s',S_GONGJ,7);
+    setCell(37,c3,'s',SS(ph2?ph2.work:''),8);
+    for(let c=c3+1;c<=c5;c++) setCell(37,c,'s',S_EMPTY,8);
+    setCell(37,c6,'s',S_ILJA,7);
+    setCell(37,c7,'s',SS(ph2?ph2.date:''),8);
+    for(let c=c7+1;c<=c9;c++) setCell(37,c,'s',S_EMPTY,8);
+    setCell(37,c10,'s',S_EMPTY,13);  // right-med only
+
+    // ── Row 38: 위치/내용 (FIX #4: plain left/right-med, NO bottom-med) ──
+    merges.push(`${colLetter(c3)}38:${colLetter(c5)}38`);
+    merges.push(`${colLetter(c7)}38:${colLetter(c9)}38`);
+    setCell(38,c1,'s',S_EMPTY,12);
+    setCell(38,c2,'s',S_WICHI,7);
+    setCell(38,c3,'s',SS(ph2?ph2.loc:''),8);
+    for(let c=c3+1;c<=c5;c++) setCell(38,c,'s',S_EMPTY,8);
+    setCell(38,c6,'s',S_NAEY,7);
+    setCell(38,c7,'s',SS(ph2?ph2.content:''),8);
+    for(let c=c7+1;c<=c9;c++) setCell(38,c,'s',S_EMPTY,8);
+    setCell(38,c10,'s',S_EMPTY,13);
+
+    // ── Row 39: separator (left/right outer only) ──
+    setCell(39,c1,'s',S_EMPTY,4);
+    setCell(39,c10,'s',S_EMPTY,5);
+
+    // ── Row 40: bottom boundary (bold bottom across full width) ──
+    setCell(40,c1,'s',S_EMPTY,14);
+    for(let c=c2;c<=c9;c++) setCell(40,c,'s',S_EMPTY,15);
+    setCell(40,c10,'s',S_EMPTY,16);
+  }
+
+  // ── Drawing ──
+  let drawing=`<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<xdr:wsDr xmlns:xdr="http://schemas.openxmlformats.org/drawingml/2006/spreadsheetDrawing"
+          xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main"
+          xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships">`;
+  let drawRels=`<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">`;
+  let ctExtra='';
+
+  for(let i=0;i<images.length;i++){
+    const pg=Math.floor(i/2), slot=i%2;
+    const base=pg*COLS_PER_PAGE;
+    const fromCol=base+1, toCol=base+9;
+    const fromRow=slot===0?2:21, toRow=slot===0?17:36;
+    const rId=`rId${i+1}`;
+    ctExtra  +=`<Override PartName="/xl/media/image${i+1}.jpeg" ContentType="image/jpeg"/>`;
+    drawRels +=`<Relationship Id="${rId}" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/image" Target="../media/image${i+1}.jpeg"/>`;
+    drawing  +=`
+<xdr:twoCellAnchor editAs="oneCell">
+  <xdr:from><xdr:col>${fromCol}</xdr:col><xdr:colOff>0</xdr:colOff><xdr:row>${fromRow}</xdr:row><xdr:rowOff>0</xdr:rowOff></xdr:from>
+  <xdr:to><xdr:col>${toCol}</xdr:col><xdr:colOff>0</xdr:colOff><xdr:row>${toRow}</xdr:row><xdr:rowOff>0</xdr:rowOff></xdr:to>
+  <xdr:pic>
+    <xdr:nvPicPr><xdr:cNvPr id="${i+2}" name="Photo${i+1}"/><xdr:cNvPicPr><a:picLocks noChangeAspect="0"/></xdr:cNvPicPr></xdr:nvPicPr>
+    <xdr:blipFill><a:blip r:embed="${rId}"/><a:stretch><a:fillRect/></a:stretch></xdr:blipFill>
+    <xdr:spPr><a:xfrm><a:off x="0" y="0"/><a:ext cx="1" cy="1"/></a:xfrm><a:prstGeom prst="rect"><a:avLst/></a:prstGeom></xdr:spPr>
+  </xdr:pic>
+  <xdr:clientData/>
+</xdr:twoCellAnchor>`;
+    zip.file(`xl/media/image${i+1}.jpeg`, images[i].split(',')[1], {base64:true});
+  }
+  drawing+='</xdr:wsDr>';
+  drawRels+='</Relationships>';
+
+  // ── Row XML ──
+  let rowsXml='';
+  for(let r=1;r<=40;r++){
+    const rd=rowData[r];
+    const htAttr=rd?.ht?`ht="${rd.ht}" customHeight="1"`:'';
+    let cellsXml='';
+    if(rd?.cells){
+      const cols=Object.keys(rd.cells).map(Number).sort((a,b)=>a-b);
+      for(const c of cols){
+        const cell=rd.cells[c];
+        const ref=colLetter(c)+r;
+        cellsXml+=cell.t==='s'
+          ?`<c r="${ref}" s="${cell.s}" t="s"><v>${cell.v}</v></c>`
+          :`<c r="${ref}" s="${cell.s}"/>`;
+      }
+    }
+    rowsXml+=`<row r="${r}" ${htAttr}>${cellsXml}</row>\n`;
+  }
+
+  const mergeCellsXml=merges.map(m=>`<mergeCell ref="${m}"/>`).join('');
+
+  // ── Borders ──
+  function bd(L='',R='',T='',B=''){
+    return `<border>${['left','right','top','bottom'].map((s,i)=>[L,R,T,B][i]?`<${s} style="${[L,R,T,B][i]}"><color rgb="FF000000"/></${s}>`:`<${s}/>`).join('')}<diagonal/></border>`;
+  }
+
+  const bordersXml=[
+    bd(),                           // 0 none
+    bd('thin','thin','thin','thin'),// 1 all-thin
+    bd('medium','','medium',''),    // 2 title TL: left+top med
+    bd('','','medium',''),          // 3 title mid: top med
+    bd('','medium','medium',''),    // 4 title TR: right+top med
+    bd('medium','','',''),          // 5 left-margin: left med
+    bd('','medium','',''),          // 6 right-margin: right med
+    bd('medium','','','medium'),    // 7 gap-left: left+bot med
+    bd('','','','medium'),          // 8 gap-mid: bot med
+    bd('','medium','','medium'),    // 9 gap-right: right+bot med
+    bd('medium','','',''),          // 10 row37-38 left-edge: left med only (FIX #4)
+    bd('','medium','',''),          // 11 row37-38 right-edge: right med only (FIX #4)
+    bd('medium','','','medium'),    // 12 row40-A: left+bot med
+    bd('','','','medium'),          // 13 row40-mid: bot med
+    bd('','medium','','medium'),    // 14 row40-J: right+bot med
+  ].join('');
+
+  // ── Fonts / Fills ──
+  const fontsXml=`<font><sz val="11"/><name val="돋움"/></font><font><b/><sz val="18"/><name val="돋움"/></font>`;
+  const fillsXml=`<fill><patternFill patternType="none"/></fill><fill><patternFill patternType="gray125"/></fill>`;
+
+  // ── cellXfs ──
+  // FIX #2: labels use "center" not "distributed"
+  function xf(fontId,borderId,horiz='center'){
+    return `<xf numFmtId="0" fontId="${fontId}" fillId="0" borderId="${borderId}" xfId="0" applyFont="1" applyBorder="1" applyAlignment="1"><alignment horizontal="${horiz}" vertical="center"/></xf>`;
+  }
+
+  const cellXfsXml=[
+    `<xf numFmtId="0" fontId="0" fillId="0" borderId="0" xfId="0"/>`,// s0 default
+    xf(1,2,'center'),  // s1  title-TL
+    xf(1,3,'center'),  // s2  title-mid
+    xf(1,4,'center'),  // s3  title-TR
+    xf(0,5,'center'),  // s4  left-margin
+    xf(0,6,'center'),  // s5  right-margin
+    xf(1,1,'center'),  // s6  photo (PICTURE text)
+    xf(0,1,'center'),  // s7  label (공종 etc)
+    xf(0,1,'center'),  // s8  value
+    xf(1,7,'center'),  // s9  gap-left
+    xf(1,8,'center'),  // s10 gap-mid
+    xf(1,9,'center'),  // s11 gap-right
+    xf(0,10,'center'), // s12 row37-38 left-edge
+    xf(0,11,'center'), // s13 row37-38 right-edge
+    xf(0,12,'center'), // s14 row40-A
+    xf(0,13,'center'), // s15 row40-mid
+    xf(0,14,'center'), // s16 row40-J
+  ].join('');
+
+  const stylesXml=`<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<styleSheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main">
+  <fonts count="2">${fontsXml}</fonts>
+  <fills count="2">${fillsXml}</fills>
+  <borders count="15">${bordersXml}</borders>
+  <cellStyleXfs count="1"><xf numFmtId="0" fontId="0" fillId="0" borderId="0"/></cellStyleXfs>
+  <cellXfs count="17">${cellXfsXml}</cellXfs>
+  <cellStyles count="1"><cellStyle name="Normal" xfId="0" builtinId="0"/></cellStyles>
+</styleSheet>`;
+
+  // ── Shared strings XML ──
+  const ssXml=`<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<sst xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main" count="${ss.length}" uniqueCount="${ss.length}">
+${ss.map(s=>`<si><t xml:space="preserve">${s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;')}</t></si>`).join('\n')}
+</sst>`;
+
+  // ── Columns ──
+  let colsXml='<cols>';
+  for(let pg=0;pg<PAGES;pg++){
+    const base=pg*10;
+    colsXml+=`<col min="${base+1}" max="${base+1}" width="${(4.375*0.95).toFixed(4)}" customWidth="1"/>`;
+    colsXml+=`<col min="${base+2}" max="${base+9}" width="${(8.5*0.95).toFixed(4)}" customWidth="1"/>`;
+    colsXml+=`<col min="${base+10}" max="${base+10}" width="${(4.5*0.95).toFixed(4)}" customWidth="1"/>`;
+  }
+  colsXml+='</cols>';
+
+  // ── FIX #1: NO manual colBreaks — instead use fitToPage with fitToWidth=1 ──
+  // This tells Excel each 10-col block is exactly one page wide,
+  // using the sheet's own column widths + margins to fit A4 portrait.
+  // The original file relies on each block being one print area; we replicate
+  // that by setting fitToWidth=1, fitToHeight=0 (auto height) with scale=100.
+  const lastColLetter=colLetter(PAGES*COLS_PER_PAGE);
+  const printAreaRef=`사진대지!$A$1:$${lastColLetter}$40`;
+
+  // FIX #1: Use pageSetup fitToWidth per page block via colBreaks with correct max value
+  // The root cause was max="1048575" instead of max="16383" for column breaks.
+  // Also the break id must be the LAST column of the page (0-indexed in some apps),
+  // but in xlsx colBreaks id is 1-indexed column number.
+  let colBreaksXml='';
+  if(PAGES>1){
+    const brkItems=[];
+    for(let pg=0;pg<PAGES-1;pg++){
+      brkItems.push(`<brk id="${(pg+1)*COLS_PER_PAGE}" max="16383" man="1"/>`);
+    }
+    colBreaksXml=`<colBreaks count="${brkItems.length}" manualBreakCount="${brkItems.length}">${brkItems.join('')}</colBreaks>`;
+  }
+
+  const sheetXml=`<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<worksheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main"
+           xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships">
+  <sheetFormatPr defaultRowHeight="16.5"/>
+  ${colsXml}
+  <sheetData>
+${rowsXml}  </sheetData>
+  <mergeCells count="${merges.length}">
+${mergeCellsXml}
+  </mergeCells>
+  <printOptions headings="0" gridLines="0"/>
+  <pageMargins left="0.7" right="0.7" top="0.75" bottom="0.75" header="0.3" footer="0.3"/>
+  <pageSetup paperSize="9" orientation="portrait" fitToPage="0" scale="100" horizontalDpi="300" verticalDpi="300"/>
+  <headerFooter>
+    <oddHeader>&amp;R&amp;"Aptos,보통"&amp;13&amp;K000000 [ RESTRICTED ]</oddHeader>
+    <oddFooter>&amp;C&amp;"Aptos"&amp;5&amp;K000000 [Secure Minds, Secure Finds] 본 문서는 현대건설㈜의 정보자산이므로 무단 전제 및 복제할 수 없으며, 이를 위반할 시에는 당사 사규 및 관련 법규에 의해 제지를 받을 수 있습니다.</oddFooter>
+  </headerFooter>
+  ${colBreaksXml}
+  <drawing r:id="rId1"/>
+</worksheet>`;
+
+  // ── Package ──
+  zip.file('[Content_Types].xml', `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types">
+  <Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/>
+  <Default Extension="xml"  ContentType="application/xml"/>
+  <Override PartName="/xl/workbook.xml"          ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet.main+xml"/>
+  <Override PartName="/xl/worksheets/sheet1.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.worksheet+xml"/>
+  <Override PartName="/xl/styles.xml"            ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.styles+xml"/>
+  <Override PartName="/xl/sharedStrings.xml"     ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.sharedStrings+xml"/>
+  <Override PartName="/xl/drawings/drawing1.xml" ContentType="application/vnd.openxmlformats-officedocument.drawing+xml"/>
+  ${ctExtra}
+</Types>`);
+
+  zip.file('_rels/.rels', `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">
+  <Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/officeDocument" Target="xl/workbook.xml"/>
+</Relationships>`);
+
+  zip.file('xl/workbook.xml', `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<workbook xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main"
+          xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships">
+  <sheets><sheet name="사진대지" sheetId="1" r:id="rId1"/></sheets>
+  <definedNames>
+    <definedName name="_xlnm.Print_Area" localSheetId="0">${printAreaRef}</definedName>
+  </definedNames>
+</workbook>`);
+
+  zip.file('xl/_rels/workbook.xml.rels', `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">
+  <Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/worksheet"     Target="worksheets/sheet1.xml"/>
+  <Relationship Id="rId2" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/styles"        Target="styles.xml"/>
+  <Relationship Id="rId3" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/sharedStrings" Target="sharedStrings.xml"/>
+</Relationships>`);
+
+  zip.file('xl/worksheets/sheet1.xml', sheetXml);
+  zip.file('xl/worksheets/_rels/sheet1.xml.rels', `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">
+  <Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/drawing" Target="../drawings/drawing1.xml"/>
+</Relationships>`);
+  zip.file('xl/styles.xml',        stylesXml);
+  zip.file('xl/sharedStrings.xml', ssXml);
+  zip.file('xl/drawings/drawing1.xml', drawing);
+  zip.file('xl/drawings/_rels/drawing1.xml.rels', drawRels);
+
+  const blob = await zip.generateAsync({type:'blob', compression:'DEFLATE'});
+  const url  = URL.createObjectURL(blob);
+  const a    = document.createElement('a');
+  a.href = url;
+  a.download = `사진대지_${new Date().toISOString().slice(0,10)}.xlsx`;
+  a.click();
+  URL.revokeObjectURL(url);
+}
+
+// ── Init ───────────────────────────────────────────────────────────────────
+renderPages();
+</script>
+</body>
+</html>
