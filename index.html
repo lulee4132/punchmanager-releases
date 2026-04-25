@@ -8,6 +8,7 @@
 <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-firestore-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-storage-compat.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
 <style>
 *{box-sizing:border-box;margin:0;padding:0;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif}
 :root{
@@ -256,6 +257,7 @@ tr:hover td{background:rgba(255,255,255,.02)}
     <div class="topbar-site" id="tb-site"></div>
     <div class="topbar-code" id="tb-code"></div>
     <button class="btn-sm btn-excel" onclick="exportExcel()">📊 엑셀</button>
+    <button class="btn-sm btn-excel" onclick="alert('🔧 개발 중입니다.\\n(CORS 설정 후 활성화 예정)')" style="opacity:0.6;cursor:not-allowed">🤐 ZIP</button>
     <button class="btn-sm btn-upload" onclick="openUploadModal()">📤 업로드</button>
     <button class="btn-sm" style="background:var(--card2);color:var(--muted)" onclick="window.open('https://lulee4132.github.io/punchmanager-releases/사진대지_생성기.html','_blank')" title="사진대지 생성기">🎨 사진대지</button>
     <button class="btn-sm" style="background:var(--card2);color:var(--muted)" onclick="window.open('https://lulee4132.github.io/Text-extraction-labelling-Tool/','_blank')" title="텍스트 추출 도구">📝 사진분류</button>
@@ -270,6 +272,7 @@ tr:hover td{background:rgba(255,255,255,.02)}
       <div class="stat-card"><div class="stat-num" id="st-done" style="color:var(--green)">-</div><div class="stat-lbl">완료</div></div>
       <div class="stat-card"><div class="stat-num" id="st-users" style="color:var(--accent)">-</div><div class="stat-lbl">참여인원</div></div>
     </div>
+    <div id="bg-load-ind" style="display:none;font-size:12px;color:var(--muted);margin-bottom:12px;padding:6px 10px;background:var(--card);border:1px solid var(--border);border-radius:8px"></div>
 
     <!-- 필터 -->
     <div class="filters">
@@ -434,6 +437,9 @@ let lastDoc = null;
 let hasMore = true;
 let isLoadingMore = false;
 const loadedIds = new Set();
+let isFullLoaded = false;       // 백그라운드 전체 로드 완료 여부
+let isBgLoading = false;        // 백그라운드 로드 중 여부
+let bgLoadCancelToken = 0;      // 사이트 변경 시 이전 백그라운드 로드 취소
 
 // ── 로그인 ──
 document.getElementById('inp-code').addEventListener('input', function() {
@@ -511,16 +517,51 @@ async function loadPhotos() {
   loadedIds.clear();
   lastDoc = null;
   hasMore = true;
+  isFullLoaded = false;
+  bgLoadCancelToken++;
   try {
     await fetchNextPage();
     buildFilters();
     applyFilter();
     updateStats();
     setSyncBar(false);
+    // 첫 페이지 렌더 후 백그라운드로 나머지 전체 로드
+    if (hasMore) {
+      loadAllInBackground(bgLoadCancelToken);
+    } else {
+      isFullLoaded = true;
+      updateStats();
+    }
   } catch(e) {
     setSyncBar(false);
     document.getElementById('tbl-body').innerHTML =
       `<div class="empty">데이터를 불러올 수 없습니다<br><small style="color:var(--muted)">${e.message}</small></div>`;
+  }
+}
+
+// 백그라운드 전체 메타데이터 로드 (사진 바이너리 X, Firestore 문서만)
+async function loadAllInBackground(token) {
+  if (isBgLoading) return;
+  isBgLoading = true;
+  try {
+    while (hasMore && token === bgLoadCancelToken) {
+      const before = allPhotos.length;
+      await fetchNextPage();
+      // 페이지마다 통계/필터 점진적 업데이트
+      if (token !== bgLoadCancelToken) return;
+      buildFilters();
+      applyFilter();
+      updateStats();
+      if (allPhotos.length === before) break; // 안전장치
+    }
+    if (token === bgLoadCancelToken) {
+      isFullLoaded = true;
+      updateStats();
+    }
+  } catch (e) {
+    console.error('백그라운드 로드 실패:', e);
+  } finally {
+    isBgLoading = false;
   }
 }
 
@@ -669,10 +710,19 @@ function updateStats() {
   const open = allPhotos.filter(p => p.status === 'active').length;
   const done = allPhotos.filter(p => p.status === 'done').length;
   const users = new Set(allPhotos.map(p => p.userName).filter(Boolean)).size;
-  document.getElementById('st-total').textContent = total;
-  document.getElementById('st-open').textContent = open;
-  document.getElementById('st-done').textContent = done;
-  document.getElementById('st-users').textContent = users;
+  // 백그라운드 로딩 중이면 숫자 뒤에 "+" 표기 (아직 더 있다는 뜻)
+  const suffix = isFullLoaded ? '' : '+';
+  document.getElementById('st-total').textContent = total + suffix;
+  document.getElementById('st-open').textContent = open + suffix;
+  document.getElementById('st-done').textContent = done + suffix;
+  document.getElementById('st-users').textContent = users + suffix;
+
+  // 로딩 인디케이터
+  const ind = document.getElementById('bg-load-ind');
+  if (ind) {
+    ind.style.display = isFullLoaded ? 'none' : 'inline-block';
+    if (!isFullLoaded) ind.textContent = `📥 전체 데이터 로딩 중... (${total}개 누적)`;
+  }
 }
 
 function renderTable(photos) {
@@ -734,8 +784,22 @@ function openImg(url, loc, sub) {
 function closeImgModal() { document.getElementById('img-modal').classList.remove('open'); }
 function closeModal(e) { if (e.target === document.getElementById('img-modal')) closeImgModal(); }
 
+// 전체 로드 완료까지 대기 (백그라운드 로드 중이면 polling)
+async function ensureFullLoad() {
+  if (isFullLoaded) return;
+  setSyncBar(true, '전체 데이터 로드 대기 중...');
+  while (!isFullLoaded) {
+    await new Promise(r => setTimeout(r, 200));
+  }
+  setSyncBar(false);
+}
+
 // ── 엑셀 내보내기 ──
-function exportExcel() {
+async function exportExcel() {
+  await ensureFullLoad();
+  _exportExcelInner();
+}
+function _exportExcelInner() {
   const dong = document.getElementById('f-dong').value;
   const gj = document.getElementById('f-gj').value;
   const status = document.getElementById('f-status').value;
@@ -767,6 +831,104 @@ function exportExcel() {
   ws['!cols'] = [8,6,8,8,15,20,6,10,8,40].map(w=>({wch:w}));
   XLSX.utils.book_append_sheet(wb, ws, '펀치리스트');
   XLSX.writeFile(wb, `펀치리스트_${currentSiteName}_${new Date().toISOString().slice(0,10)}.xlsx`);
+}
+
+// ── ZIP 다운로드 ──
+async function downloadPhotosZip() {
+  await ensureFullLoad();
+  const dong = document.getElementById('f-dong').value;
+  const ho = document.getElementById('f-ho').value;
+  const gj = document.getElementById('f-gj').value;
+  const status = document.getElementById('f-status').value;
+  const user = document.getElementById('f-user').value;
+  const search = document.getElementById('f-search').value.toLowerCase();
+
+  const filtered = allPhotos.filter(p => {
+    if (dong && p.dong !== dong) return false;
+    if (ho && p.ho !== ho) return false;
+    if (gj && p.gj !== gj) return false;
+    if (status && p.status !== status) return false;
+    if (user && p.userName !== user) return false;
+    if (search) {
+      const hay = `${p.wichi} ${p.content} ${p.dong} ${p.gj} ${p.userName}`.toLowerCase();
+      if (!hay.includes(search)) return false;
+    }
+    return true;
+  });
+
+  if (filtered.length === 0) {
+    alert('다운로드할 사진이 없습니다.');
+    return;
+  }
+
+  const btn = event.target.closest('button');
+  const origText = btn.textContent;
+  btn.textContent = '⏳ 다운로드 중...';
+  btn.disabled = true;
+
+  try {
+    const zip = new JSZip();
+    let downloaded = 0;
+
+    let firstError = null;
+    for (const photo of filtered) {
+      try {
+        // Storage path를 직접 구성 (URL 파싱 의존 X)
+        const path = `sites/${currentSiteCode}/photos/photo_${photo.ts}.png`;
+        const ref = storage.ref(path);
+
+        let blob;
+        if (typeof ref.getBlob === 'function') {
+          blob = await ref.getBlob();
+        } else {
+          // 폴백: download URL 받아서 fetch
+          const url = await ref.getDownloadURL();
+          const res = await fetch(url);
+          blob = await res.blob();
+        }
+
+        // 폴더: 동/호수/공종
+        const folderPath = `${photo.dong || '미분류'}/${photo.ho || '-'}/${photo.gj || '-'}`;
+        // 파일명: 상세위치_내용_날짜_ts
+        const fileName = `${photo.wichi || 'photo'}_${(photo.content || '').slice(0,10)}_${photo.date || photo.ts}.png`;
+
+        zip.folder(folderPath).file(fileName, blob);
+        downloaded++;
+      } catch (err) {
+        if (!firstError) firstError = err;
+        console.warn(`사진 다운로드 실패 (ts=${photo.ts}, ${photo.wichi}):`, err);
+      }
+    }
+
+    if (downloaded === 0 && firstError) {
+      alert(`사진 다운로드 실패\n원인: ${firstError.code || firstError.message || firstError}\n\n콘솔(F12)에서 자세한 에러를 확인하세요.`);
+      return;
+    }
+
+    if (downloaded === 0) {
+      alert('다운로드한 사진이 없습니다.');
+      return;
+    }
+
+    // ZIP 생성 및 다운로드
+    const zipBlob = await zip.generateAsync({ type: 'blob' });
+    const url = URL.createObjectURL(zipBlob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `펀치사진_${currentSiteName}_${new Date().toISOString().slice(0,10)}.zip`;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+
+    alert(`✅ ${downloaded}개 사진을 다운로드했습니다.`);
+  } catch (err) {
+    console.error('ZIP 생성 실패:', err);
+    alert('ZIP 생성에 실패했습니다.');
+  } finally {
+    btn.textContent = origText;
+    btn.disabled = false;
+  }
 }
 
 // ════════════════════════════════════════════════
