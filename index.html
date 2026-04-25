@@ -166,11 +166,60 @@ tr:hover td{background:rgba(255,255,255,.02)}
 .sync-bar{background:rgba(92,107,192,.15);border-bottom:1px solid rgba(92,107,192,.3);padding:8px 24px;font-size:12px;color:#AAB0E0;display:none;align-items:center;gap:8px}
 .sync-bar.show{display:flex}
 
+/* ── 무한 스크롤 로더 ── */
+.load-more{text-align:center;padding:20px;color:var(--muted);font-size:13px}
+.load-more .spinner{width:20px;height:20px;border-width:2px;margin:0 auto 8px}
+.load-end{text-align:center;padding:16px;color:var(--muted);font-size:12px;opacity:.6}
+
 @media(max-width:768px){
   .topbar{padding:0 12px;gap:8px}
+  .topbar-title{font-size:14px}
   .content{padding:12px}
-  th:nth-child(1),td:nth-child(1){display:none}
   .modal-info{white-space:normal;width:calc(100% - 48px)}
+
+  /* 테이블 → 카드 레이아웃 */
+  .table-wrap{background:transparent;border:none;border-radius:0;overflow:visible}
+  .table-header{padding:8px 4px 12px}
+  table,thead,tbody{display:block}
+  thead{display:none}
+  table{border-collapse:separate}
+  tr{
+    display:grid;
+    grid-template-columns:72px 1fr;
+    gap:6px 12px;
+    background:var(--card);
+    border:1px solid var(--border);
+    border-radius:12px;
+    padding:12px;
+    margin-bottom:10px;
+  }
+  tr:hover td{background:transparent}
+  td{
+    display:block;
+    padding:2px 0;
+    border-bottom:none;
+    font-size:13px;
+  }
+  /* 사진 셀 — 좌측 세로로 span */
+  td:nth-child(1){grid-row:1 / span 4;grid-column:1;align-self:start}
+  td:nth-child(1) .thumb,td:nth-child(1) .no-thumb{width:72px;height:72px}
+  /* 나머지 셀들은 우측 */
+  td:nth-child(n+2){grid-column:2}
+  td[data-label]::before{
+    content:attr(data-label);
+    display:inline-block;
+    min-width:52px;
+    color:var(--muted);
+    font-size:11px;
+    font-weight:700;
+    letter-spacing:.5px;
+    text-transform:uppercase;
+    margin-right:6px;
+  }
+  td.cell-content{max-width:100%!important;white-space:normal}
+  /* 삭제 버튼 — 카드 하단 전체폭 */
+  td.cell-del{grid-column:1 / -1;margin-top:6px}
+  td.cell-del .btn-del-row{width:100%;padding:8px}
 }
 </style>
 </head>
@@ -226,6 +275,7 @@ tr:hover td{background:rgba(255,255,255,.02)}
     <div class="filters">
       <span class="filter-label">필터</span>
       <select class="filter-select" id="f-dong" onchange="applyFilter()"><option value="">전체 동</option></select>
+      <select class="filter-select" id="f-ho" onchange="applyFilter()"><option value="">전체 호수</option></select>
       <select class="filter-select" id="f-gj" onchange="applyFilter()"><option value="">전체 공종</option></select>
       <select class="filter-select" id="f-status" onchange="applyFilter()">
         <option value="">전체 상태</option>
@@ -378,6 +428,13 @@ let currentSiteName = '';
 let currentUserName = '';
 let isAdmin = false;
 
+// ── 페이지네이션 상태 ──
+const PAGE_SIZE = 50;
+let lastDoc = null;
+let hasMore = true;
+let isLoadingMore = false;
+const loadedIds = new Set();
+
 // ── 로그인 ──
 document.getElementById('inp-code').addEventListener('input', function() {
   this.value = this.value.toUpperCase();
@@ -450,26 +507,12 @@ function showMain() {
 
 async function loadPhotos() {
   setSyncBar(true, '데이터 불러오는 중...');
+  allPhotos = [];
+  loadedIds.clear();
+  lastDoc = null;
+  hasMore = true;
   try {
-    const snap = await db.collection('sites').doc(currentSiteCode)
-        .collection('photos').orderBy('ts', 'desc').get();
-
-    // ts 기준 중복 제거 - 같은 ts면 status가 'done'인 것 우선
-    const rawPhotos = snap.docs.map(d => ({ id: d.id, ...d.data() }));
-    const tsMap = new Map();
-    for (const p of rawPhotos) {
-      const key = p.ts;
-      if (!tsMap.has(key)) {
-        tsMap.set(key, p);
-      } else {
-        const existing = tsMap.get(key);
-        // done 상태 우선, 같으면 최신 문서 ID 우선
-        if (p.status === 'done' && existing.status !== 'done') {
-          tsMap.set(key, p);
-        }
-      }
-    }
-    allPhotos = Array.from(tsMap.values());
+    await fetchNextPage();
     buildFilters();
     applyFilter();
     updateStats();
@@ -481,6 +524,74 @@ async function loadPhotos() {
   }
 }
 
+async function fetchNextPage() {
+  if (!hasMore) return 0;
+  let q = db.collection('sites').doc(currentSiteCode)
+      .collection('photos').orderBy('ts', 'desc').limit(PAGE_SIZE);
+  if (lastDoc) q = q.startAfter(lastDoc);
+
+  const snap = await q.get();
+  if (snap.empty) { hasMore = false; return 0; }
+  lastDoc = snap.docs[snap.docs.length - 1];
+  if (snap.docs.length < PAGE_SIZE) hasMore = false;
+
+  // ts 기준 중복 제거 - 같은 ts면 status가 'done'인 것 우선
+  const tsMap = new Map();
+  for (const p of allPhotos) tsMap.set(p.ts, p);
+  for (const d of snap.docs) {
+    const p = { id: d.id, ...d.data() };
+    if (loadedIds.has(d.id)) continue;
+    loadedIds.add(d.id);
+    const existing = tsMap.get(p.ts);
+    if (!existing) tsMap.set(p.ts, p);
+    else if (p.status === 'done' && existing.status !== 'done') tsMap.set(p.ts, p);
+  }
+  allPhotos = Array.from(tsMap.values()).sort((a,b) => (b.ts||0) - (a.ts||0));
+  return snap.docs.length;
+}
+
+async function loadMorePhotos() {
+  if (isLoadingMore || !hasMore) return;
+  isLoadingMore = true;
+  updateLoadMoreUI();
+  try {
+    const added = await fetchNextPage();
+    if (added > 0) {
+      buildFilters();
+      applyFilter();
+      updateStats();
+    }
+  } catch(e) {
+    console.error('추가 로드 실패:', e);
+  } finally {
+    isLoadingMore = false;
+    updateLoadMoreUI();
+  }
+}
+
+function updateLoadMoreUI() {
+  const el = document.getElementById('load-more-ind');
+  if (!el) return;
+  if (isLoadingMore) {
+    el.className = 'load-more';
+    el.innerHTML = '<div class="spinner"></div>더 불러오는 중...';
+  } else if (!hasMore && allPhotos.length > 0) {
+    el.className = 'load-end';
+    el.textContent = '— 모든 항목을 불러왔습니다 —';
+  } else {
+    el.className = '';
+    el.innerHTML = '';
+  }
+}
+
+// 스크롤 하단 감지 → 추가 로드
+window.addEventListener('scroll', () => {
+  if (document.getElementById('main-screen').style.display === 'none') return;
+  const scrollBottom = window.innerHeight + window.scrollY;
+  const threshold = document.documentElement.scrollHeight - 300;
+  if (scrollBottom >= threshold) loadMorePhotos();
+});
+
 function setSyncBar(show, msg = '') {
   const bar = document.getElementById('sync-bar');
   if (show) { bar.classList.add('show'); document.getElementById('sync-msg').textContent = msg; }
@@ -489,10 +600,12 @@ function setSyncBar(show, msg = '') {
 
 function buildFilters() {
   const dongs = [...new Set(allPhotos.map(p => p.dong).filter(Boolean))].sort();
+  const hos = [...new Set(allPhotos.map(p => p.ho).filter(Boolean))].sort();
   const gjs = [...new Set(allPhotos.map(p => p.gj).filter(Boolean))].sort();
   const users = [...new Set(allPhotos.map(p => p.userName).filter(Boolean))].sort();
 
   setOptions('f-dong', dongs, '전체 동');
+  setOptions('f-ho', hos, '전체 호수');
   setOptions('f-gj', gjs, '전체 공종');
   setOptions('f-user', users, '전체 인원');
 }
@@ -506,13 +619,27 @@ function setOptions(id, arr, placeholder) {
 
 function applyFilter() {
   const dong = document.getElementById('f-dong').value;
+  const ho = document.getElementById('f-ho').value;
   const gj = document.getElementById('f-gj').value;
   const status = document.getElementById('f-status').value;
   const user = document.getElementById('f-user').value;
   const search = document.getElementById('f-search').value.toLowerCase();
 
+  // 동이 선택되면 해당 동의 호수만 표시 (계단식)
+  if (dong) {
+    const hosForDong = [...new Set(allPhotos
+      .filter(p => p.dong === dong)
+      .map(p => p.ho)
+      .filter(Boolean))].sort();
+    setOptions('f-ho', hosForDong, '전체 호수');
+  } else {
+    const allHos = [...new Set(allPhotos.map(p => p.ho).filter(Boolean))].sort();
+    setOptions('f-ho', allHos, '전체 호수');
+  }
+
   const filtered = allPhotos.filter(p => {
     if (dong && p.dong !== dong) return false;
+    if (ho && p.ho !== ho) return false;
     if (gj && p.gj !== gj) return false;
     if (status && p.status !== status) return false;
     if (user && p.userName !== user) return false;
@@ -529,6 +656,7 @@ function applyFilter() {
 
 function resetFilter() {
   document.getElementById('f-dong').value = '';
+  document.getElementById('f-ho').value = '';
   document.getElementById('f-gj').value = '';
   document.getElementById('f-status').value = '';
   document.getElementById('f-user').value = '';
@@ -569,16 +697,16 @@ function renderTable(photos) {
         : `<span class="badge badge-open">진행중</span>`;
     }
     const delBtn = isAdmin
-      ? `<td><button class="btn-del-row" onclick="deleteRow('${p.id}',this)">🗑️ 삭제</button></td>`
+      ? `<td class="cell-del" data-label="관리"><button class="btn-del-row" onclick="deleteRow('${p.id}',this)">🗑️ 삭제</button></td>`
       : '';
     return `<tr id="row-${p.id}">
       <td>${thumb}</td>
-      <td>${p.dong || '-'}<br><small style="color:var(--muted)">${p.ho ? p.ho+'호' : ''} ${p.room || ''}</small></td>
-      <td>${p.gj || '-'}</td>
-      <td>${p.wichi || '-'}</td>
-      <td style="max-width:200px;white-space:normal">${p.content || '-'}</td>
-      <td>${badge}</td>
-      <td>${p.date || '-'}<br><span class="user-tag">${p.userName || '-'}</span></td>
+      <td data-label="위치">${p.dong || '-'} <small style="color:var(--muted)">${p.ho ? p.ho+'호' : ''} ${p.room || ''}</small></td>
+      <td data-label="공종">${p.gj || '-'}</td>
+      <td data-label="상세">${p.wichi || '-'}</td>
+      <td class="cell-content" data-label="내용" style="max-width:200px;white-space:normal">${p.content || '-'}</td>
+      <td data-label="상태">${badge}</td>
+      <td data-label="일자">${p.date || '-'} <span class="user-tag">· ${p.userName || '-'}</span></td>
       ${delBtn}
     </tr>`;
   }).join('');
@@ -589,7 +717,9 @@ function renderTable(photos) {
         <th>사진</th><th>위치</th><th>공종</th><th>상세위치</th><th>내용</th><th>상태</th><th>일자/작성자</th>${isAdmin ? '<th></th>' : ''}
       </tr></thead>
       <tbody>${rows}</tbody>
-    </table>`;
+    </table>
+    <div id="load-more-ind"></div>`;
+  updateLoadMoreUI();
 }
 
 function esc(s) { return (s||'').replace(/'/g,"\\'"); }
