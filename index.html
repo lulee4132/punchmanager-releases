@@ -751,7 +751,7 @@ function renderTable(photos) {
       : '';
     return `<tr id="row-${p.id}">
       <td>${thumb}</td>
-      <td data-label="위치">${p.dong || '-'} <small style="color:var(--muted)">${p.ho ? p.ho+'호' : ''} ${p.room || ''}</small></td>
+      <td data-label="위치">${p.dong || '-'} <small style="color:var(--muted)">${p.room || ''}</small></td>
       <td data-label="공종">${p.gj || '-'}</td>
       <td data-label="상세">${p.wichi || '-'}</td>
       <td class="cell-content" data-label="내용" style="max-width:200px;white-space:normal">${p.content || '-'}</td>
