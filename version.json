@@ -1,5 +1,5 @@
 {
-  "version": "1.0.6",
-  "apk_url": "https://github.com/lulee4132/punchmanager-releases/releases/download/v1.0.6/app-release.apk",
-  "release_notes": "내용이 길면 글씨가 잘리는 오류 수정, 데드라인 알림 기능 추가"
+  "version": "1.0.8",
+  "apk_url": "https://github.com/lulee4132/punchmanager-releases/releases/download/v1.0.8/app-release.apk",
+  "release_notes": "• 항목 수정 기능 추가 (공종/위치/내용)\n• 카메라 핀치 줌 추가\n• 동기화 안정성 개선 (중복 데이터 방지)\n• 웹앱 동/호수 필터 추가"
 }
