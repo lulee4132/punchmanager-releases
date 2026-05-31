@@ -1,5 +1,5 @@
 {
   "version": "1.0.8",
-  "apk_url": "https://github.com/lulee4132/punchmanager-releases/releases/download/v1.0.8/app-release.apk",
+  "apk_url": "https://github.com/lulee4132/punchmanager-releases/releases/download/v.1.0.8/app-release.apk",
   "release_notes": "• 항목 수정 기능 추가, 카메라 핀치 줌 추가, 동기화 안정성 개선 (중복 데이터 방지), 웹앱 동/호수 필터 추가"
 }
