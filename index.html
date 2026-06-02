@@ -257,7 +257,7 @@ tr:hover td{background:rgba(255,255,255,.02)}
     <div class="topbar-site" id="tb-site"></div>
     <div class="topbar-code" id="tb-code"></div>
     <button class="btn-sm btn-excel" onclick="exportExcel()">📊 엑셀</button>
-    <button class="btn-sm btn-excel" onclick="alert('🔧 개발 중입니다.\\n(CORS 설정 후 활성화 예정)')" style="opacity:0.6;cursor:not-allowed">🤐 ZIP</button>
+    <button class="btn-sm btn-excel" onclick="downloadPhotosZip()">🗜️ ZIP</button>
     <button class="btn-sm btn-upload" onclick="openUploadModal()">📤 업로드</button>
     <button class="btn-sm" style="background:var(--card2);color:var(--muted)" onclick="window.open('https://lulee4132.github.io/punchmanager-releases/사진대지_생성기.html','_blank')" title="사진대지 생성기">🎨 사진대지</button>
     <button class="btn-sm" style="background:var(--card2);color:var(--muted)" onclick="window.open('https://lulee4132.github.io/Text-extraction-labelling-Tool/','_blank')" title="텍스트 추출 도구">📝 사진분류</button>
@@ -887,13 +887,14 @@ async function downloadPhotosZip() {
           blob = await res.blob();
         }
 
-        // 폴더: 동/호수/공종
-        const folderPath = `${photo.dong || '미분류'}/${photo.ho || '-'}/${photo.gj || '-'}`;
+        // 폴더: 공종별로만 분류 (하위 폴더 없음)
+        const folderPath = `${photo.gj || '미분류'}`;
         // 파일명: 상세위치_내용_날짜_ts
-        const fileName = `${photo.wichi || 'photo'}_${(photo.content || '').slice(0,10)}_${photo.date || photo.ts}.png`;
+        const fileName = `${photo.wichi || 'photo'}_${(photo.content || '').slice(0,10)}_${photo.date || ''}_${photo.ts}.png`;
 
         zip.folder(folderPath).file(fileName, blob);
         downloaded++;
+        btn.textContent = `⏳ ${downloaded}/${filtered.length}`;
       } catch (err) {
         if (!firstError) firstError = err;
         console.warn(`사진 다운로드 실패 (ts=${photo.ts}, ${photo.wichi}):`, err);
