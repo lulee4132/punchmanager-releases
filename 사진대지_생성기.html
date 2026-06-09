@@ -242,11 +242,12 @@
 <div class="main">
 
   <div class="sec-label">공통 기본값 <small style="font-size:9px;letter-spacing:1px;font-weight:400;">(선택사항 — 각 사진별 개별 수정 가능)</small></div>
-  <div class="def-grid">
-    <div class="field"><label>공종</label><input type="text" id="defWork" placeholder="예: 방수공사" oninput="applyDefs()"></div>
-    <div class="field"><label>일자</label><input type="text" id="defDate" placeholder="예: 2025-07-19" oninput="applyDefs()"></div>
-    <div class="field"><label>위치</label><input type="text" id="defLoc"  placeholder="예: 105동 6~10F"  oninput="applyDefs()"></div>
-    <div class="field"><label>내용</label><input type="text" id="defContent" placeholder="예: ALC 시공"   oninput="applyDefs()"></div>
+  <div class="def-grid" style="display:flex;align-items:flex-end;gap:10px;flex-wrap:wrap">
+    <div class="field" style="flex:1;min-width:120px"><label>공종</label><input type="text" id="defWork" placeholder="예: 방수공사" oninput="applyDefs()"></div>
+    <div class="field" style="flex:1;min-width:120px"><label>일자</label><input type="text" id="defDate" placeholder="예: 2025-07-19" oninput="applyDefs()"></div>
+    <div class="field" style="flex:1;min-width:120px"><label>위치</label><input type="text" id="defLoc"  placeholder="예: 105동 6~10F"  oninput="applyDefs()"></div>
+    <div class="field" style="flex:1;min-width:120px"><label>내용</label><input type="text" id="defContent" placeholder="예: ALC 시공"   oninput="applyDefs()"></div>
+    <button class="btn btn-primary" style="flex:0 0 auto;white-space:nowrap" onclick="applyDefsAll()">📌 일괄적용</button>
   </div>
 
   <div class="sec-label">이미지 압축 설정</div>
@@ -317,6 +318,36 @@ document.getElementById('targetKB').addEventListener('input', function() {
 // Pre-fill today's date into the date default field
 document.getElementById('defDate').value = todayStr();
 
+// ── 펀치매니저 검측에서 넘어온 사진 자동 로드 (same-origin localStorage) ──
+(async function loadInjectedPhotos() {
+  let raw;
+  try { raw = localStorage.getItem('sajindaeji_inject'); } catch (e) { return; }
+  if (!raw) return;
+  try { localStorage.removeItem('sajindaeji_inject'); } catch (e) {}
+  let data;
+  try { data = JSON.parse(raw); } catch (e) { return; }
+  if (!data || !Array.isArray(data.urls) || !data.urls.length) return;
+
+  if (data.date)  document.getElementById('defDate').value = data.date;
+  if (data.title) document.getElementById('defContent').value = data.title;
+
+  setStatus('info', `검측 사진 불러오는 중... 0/${data.urls.length}`);
+  const files = [];
+  for (let i = 0; i < data.urls.length; i++) {
+    const it = data.urls[i];
+    try {
+      const res = await fetch(it.url);
+      const blob = await res.blob();
+      files.push(new File([blob], it.name || `photo_${i}.jpg`, { type: blob.type || 'image/jpeg' }));
+    } catch (e) {
+      console.warn('사진 로드 실패:', it.url, e);
+    }
+    setStatus('info', `검측 사진 불러오는 중... ${i+1}/${data.urls.length}`);
+  }
+  if (files.length) addFiles(files);
+  setStatus('success', `✅ ${files.length}장 불러옴 — 확인 후 다운로드하세요.`);
+})();
+
 // ── Drop zone ───────────────────────────────────────────────────────────────
 const dz = document.getElementById('dropZone');
 const fi = document.getElementById('fileInput');
@@ -361,6 +392,21 @@ function applyDefs() {
       if (inp && inp.value === '') { inp.value = d[k]; p[k] = d[k]; }
     });
   });
+}
+
+// 공통 기본값을 모든 사진에 덮어쓰기 적용 (입력된 항목만)
+function applyDefsAll() {
+  if (!photos.length) { setStatus('error', '먼저 사진을 추가하세요.'); return; }
+  const d = getDefs();
+  let applied = 0;
+  photos.forEach(p => {
+    ['work','date','loc','content'].forEach(k => {
+      if (d[k] !== '') { p[k] = d[k]; applied++; }
+    });
+  });
+  renderPages();
+  const filled = ['work','date','loc','content'].filter(k => d[k] !== '').length;
+  setStatus('success', filled ? `📌 ${photos.length}장에 ${filled}개 항목 일괄적용 완료` : '적용할 기본값이 없습니다.');
 }
 
 function updatePhoto(i, key, val) { photos[i][key] = val; }
