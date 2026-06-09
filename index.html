@@ -798,9 +798,9 @@ function renderTable(photos) {
     const thumb = p.url
       ? `<img class="thumb" src="${p.url}" onclick="openImg('${p.url}','${esc(p.wichi)}','${esc(p.gj+' · '+p.date+' · '+p.userName)}')" loading="lazy">`
       : `<div class="no-thumb">📷</div>`;
-    const isOwn = p.userName === currentUserName;
+    const canToggle = (p.userName === currentUserName) || isAdmin;
     let badge;
-    if (isOwn) {
+    if (canToggle) {
       badge = p.status === 'done'
         ? `<span class="badge badge-done badge-click" onclick="toggleStatus('${p.id}')" title="클릭→진행중">완료</span>`
         : `<span class="badge badge-open badge-click" onclick="toggleStatus('${p.id}')" title="클릭→완료">진행중</span>`;
@@ -1697,7 +1697,7 @@ async function doUpload() {
 // ── 상태 토글 (자기가 올린 것만) ──
 async function toggleStatus(photoId) {
   const photo = allPhotos.find(p => p.id === photoId);
-  if (!photo || photo.userName !== currentUserName) return;
+  if (!photo || (photo.userName !== currentUserName && !isAdmin)) return;
 
   const newStatus = photo.status === 'done' ? 'active' : 'done';
   const badge = document.querySelector(`#row-${photoId} .badge`);
