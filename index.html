@@ -259,6 +259,7 @@ tr:hover td{background:rgba(255,255,255,.02)}
     <button class="btn-sm btn-excel" onclick="exportExcel()">📊 엑셀</button>
     <button class="btn-sm btn-excel" onclick="downloadPhotosZip()">🗜️ ZIP</button>
     <button class="btn-sm btn-upload" onclick="openUploadModal()">📤 업로드</button>
+    <button class="btn-sm" style="background:#3B82F6;color:#fff" onclick="openInspect()">🔍 검측</button>
     <button class="btn-sm" style="background:var(--card2);color:var(--muted)" onclick="window.open('https://lulee4132.github.io/punchmanager-releases/사진대지_생성기.html','_blank')" title="사진대지 생성기">🎨 사진대지</button>
     <button class="btn-sm" style="background:var(--card2);color:var(--muted)" onclick="window.open('https://lulee4132.github.io/Text-extraction-labelling-Tool/','_blank')" title="텍스트 추출 도구">📝 사진분류</button>
     <button class="btn-sm btn-logout" onclick="doLogout()">로그아웃</button>
@@ -400,6 +401,56 @@ tr:hover td{background:rgba(255,255,255,.02)}
   </div>
 </div>
 
+<!-- 검측 목록 모달 -->
+<div id="inspect-modal" onclick="closeInspect(event)">
+  <div class="inspect-box">
+    <div class="upload-header">
+      <span>🔍 검측 사진</span>
+      <button onclick="closeInspect()">✕</button>
+    </div>
+    <div style="display:flex;align-items:center;justify-content:space-between;gap:12px;margin-bottom:16px">
+      <div id="inspect-summary" style="font-size:13px;color:var(--muted)"></div>
+      <button class="btn-sm btn-upload" onclick="openInspectAdd()">➕ 추가</button>
+    </div>
+    <div id="inspect-list">
+      <div class="loading"><div class="spinner"></div>불러오는 중...</div>
+    </div>
+  </div>
+</div>
+
+<!-- 검측 추가 모달 -->
+<div id="inspect-add-modal" onclick="closeInspectAdd(event)">
+  <div class="upload-box" style="max-width:520px">
+    <div class="upload-header">
+      <span>➕ 검측 회차 추가</span>
+      <button onclick="closeInspectAdd()">✕</button>
+    </div>
+    <div class="upload-grid">
+      <div class="uf-wrap">
+        <label>날짜 <span style="color:var(--accent)">*</span></label>
+        <input type="date" id="insp-date" class="field-input" style="padding:10px 12px">
+      </div>
+      <div class="uf-wrap">
+        <label>제목 <span style="color:var(--accent)">*</span></label>
+        <input id="insp-title" class="field-input" style="padding:10px 12px" placeholder="예: 1회차 골조검측">
+      </div>
+    </div>
+    <div id="insp-drop" onclick="document.getElementById('insp-files').click()"
+      style="margin-top:14px;border:2px dashed var(--border);border-radius:12px;padding:28px;text-align:center;cursor:pointer;color:var(--muted)">
+      <input type="file" id="insp-files" accept="image/*" multiple style="display:none" onchange="onInspFilesSelected(event)">
+      <div style="font-size:32px">📷</div>
+      <p style="margin:8px 0 2px">사진 선택 (여러 장 가능)</p>
+      <small id="insp-files-count">갤러리에서 검측 사진을 선택하세요</small>
+    </div>
+    <div class="progress-wrap" id="insp-progress-wrap" style="display:none">
+      <div class="progress-bar"><div class="progress-fill" id="insp-progress-fill"></div></div>
+      <div class="progress-label" id="insp-progress-label">업로드 중...</div>
+    </div>
+    <div id="insp-error" style="display:none;background:#2D1A1A;border:1px solid rgba(231,76,60,.4);border-radius:8px;padding:10px 14px;font-size:13px;color:var(--red);margin:12px 0"></div>
+    <button class="btn-sm btn-upload" id="insp-submit" style="width:100%;padding:14px;font-size:15px;margin-top:14px" onclick="doInspectUpload()">📤 업로드</button>
+  </div>
+</div>
+
 <!-- 이미지 모달 -->
 <div id="img-modal" onclick="closeModal(event)">
   <button id="img-modal-close" onclick="closeImgModal()">✕</button>
@@ -410,6 +461,18 @@ tr:hover td{background:rgba(255,255,255,.02)}
   </div>
 </div>
 
+<style>
+#inspect-modal,#inspect-add-modal{display:none;position:fixed;inset:0;background:rgba(0,0,0,.75);z-index:600;align-items:center;justify-content:center;padding:24px}
+#inspect-modal.open,#inspect-add-modal.open{display:flex}
+#inspect-add-modal{z-index:620}
+.inspect-box{background:var(--card);border:1px solid var(--border);border-radius:20px;width:100%;max-width:680px;max-height:90vh;overflow-y:auto;padding:28px;position:relative}
+.insp-card{background:var(--card2);border:1px solid var(--border);border-radius:12px;padding:14px 16px;margin-bottom:10px;display:flex;align-items:center;gap:14px}
+.insp-card .ic-main{flex:1;min-width:0}
+.insp-card .ic-title{font-size:15px;font-weight:700;color:var(--text);margin-bottom:3px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.insp-card .ic-meta{font-size:12px;color:var(--muted)}
+.insp-card .ic-actions{display:flex;gap:8px;flex-shrink:0}
+.insp-empty{text-align:center;color:var(--muted);padding:40px 0;font-size:14px}
+</style>
 <script>
 // ── Firebase 설정 ──
 const firebaseConfig = {
@@ -929,6 +992,266 @@ async function downloadPhotosZip() {
   } finally {
     btn.textContent = origText;
     btn.disabled = false;
+  }
+}
+
+// ════════════════════════════════════════════════
+// ── 검측 사진 ──
+// ════════════════════════════════════════════════
+let inspectBatches = [];
+let inspFiles = [];
+
+function _inspColl() {
+  return db.collection('sites').doc(currentSiteCode).collection('inspections');
+}
+function _fmtBytes(b) {
+  if (!b) return '0B';
+  const u = ['B','KB','MB','GB']; let i = 0;
+  while (b >= 1024 && i < u.length-1) { b /= 1024; i++; }
+  return b.toFixed(i ? 1 : 0) + u[i];
+}
+function _sanitize(s) {
+  return (s || '').replace(/[\/\\:*?"<>|]/g, '_').trim();
+}
+function escapeHtml(s) {
+  return (s || '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+}
+
+// 업로드 전 이미지 압축 (약 1MB 목표). Blob 반환
+async function compressImage(file, maxBytes = 1024 * 1024, maxDim = 2048) {
+  if (!file.type.startsWith('image/')) return file;
+  const img = await new Promise((res, rej) => {
+    const i = new Image();
+    i.onload = () => res(i);
+    i.onerror = rej;
+    i.src = URL.createObjectURL(file);
+  });
+  let w = img.width, h = img.height;
+  const scale = Math.min(1, maxDim / Math.max(w, h));
+  w = Math.round(w * scale); h = Math.round(h * scale);
+  const canvas = document.createElement('canvas');
+  canvas.width = w; canvas.height = h;
+  canvas.getContext('2d').drawImage(img, 0, 0, w, h);
+  URL.revokeObjectURL(img.src);
+
+  let q = 0.85, blob = null;
+  for (let attempt = 0; attempt < 8; attempt++) {
+    blob = await new Promise(r => canvas.toBlob(r, 'image/jpeg', q));
+    if (blob && blob.size <= maxBytes) break;
+    if (q > 0.45) { q -= 0.12; continue; }
+    // 화질 한계 도달 → 해상도 축소 후 재시도
+    w = Math.round(w * 0.8); h = Math.round(h * 0.8);
+    canvas.width = w; canvas.height = h;
+    canvas.getContext('2d').drawImage(img, 0, 0, w, h);
+    q = 0.7;
+  }
+  return blob || file;
+}
+
+// 검측 회차 → 사진대지 생성기 열기 (same-origin localStorage 주입)
+function openInspectSajin(batchId) {
+  const batch = inspectBatches.find(b => b.id === batchId);
+  if (!batch || !batch.photos || !batch.photos.length) { alert('사진이 없습니다.'); return; }
+  const payload = {
+    title: batch.title || '',
+    date: batch.date || '',
+    urls: batch.photos.map(p => ({ url: p.url, name: p.name })),
+  };
+  try { localStorage.setItem('sajindaeji_inject', JSON.stringify(payload)); }
+  catch (e) { alert('사진대지 전달에 실패했습니다: ' + e.message); return; }
+  window.open('사진대지_생성기.html', '_blank');
+}
+
+async function openInspect() {
+  document.getElementById('inspect-modal').classList.add('open');
+  await loadInspectBatches();
+}
+function closeInspect(e) {
+  if (e && e.target !== document.getElementById('inspect-modal')) return;
+  document.getElementById('inspect-modal').classList.remove('open');
+}
+
+async function loadInspectBatches() {
+  const list = document.getElementById('inspect-list');
+  list.innerHTML = '<div class="loading"><div class="spinner"></div>불러오는 중...</div>';
+  try {
+    const snap = await _inspColl().orderBy('createdAt', 'desc').get();
+    inspectBatches = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+    renderInspectList();
+  } catch (err) {
+    console.error('검측 목록 로드 실패:', err);
+    list.innerHTML = '<div class="insp-empty">목록을 불러오지 못했습니다.<br>' + (err.code || err.message || '') + '</div>';
+  }
+}
+
+function renderInspectList() {
+  const list = document.getElementById('inspect-list');
+  const summary = document.getElementById('inspect-summary');
+  if (inspectBatches.length === 0) {
+    list.innerHTML = '<div class="insp-empty">아직 검측 회차가 없습니다.<br>➕ 추가 버튼으로 사진을 올려보세요.</div>';
+    summary.textContent = '';
+    return;
+  }
+  const totalPhotos = inspectBatches.reduce((s,b) => s + (b.photoCount||0), 0);
+  const totalBytes = inspectBatches.reduce((s,b) => s + (b.totalBytes||0), 0);
+  summary.textContent = `${inspectBatches.length}개 회차 · 사진 ${totalPhotos}장 · ${_fmtBytes(totalBytes)}`;
+  list.innerHTML = inspectBatches.map(b => `
+    <div class="insp-card">
+      <div class="ic-main">
+        <div class="ic-title">${b.date || ''} ${escapeHtml(b.title || '(제목없음)')}</div>
+        <div class="ic-meta">👤 ${escapeHtml(b.uploader || '-')} · 사진 ${b.photoCount||0}장 · ${_fmtBytes(b.totalBytes)}</div>
+      </div>
+      <div class="ic-actions">
+        <button class="btn-sm btn-excel" onclick="downloadInspectZip('${b.id}', this)">📥 다운로드</button>
+        <button class="btn-sm" style="background:#3B82F6;color:#fff" onclick="openInspectSajin('${b.id}')">🎨 사진대지</button>
+        <button class="btn-sm btn-danger" onclick="deleteInspectBatch('${b.id}')">🗑️</button>
+      </div>
+    </div>`).join('');
+}
+
+// ── 추가 모달 ──
+function openInspectAdd() {
+  inspFiles = [];
+  document.getElementById('insp-date').value = new Date().toISOString().slice(0,10);
+  document.getElementById('insp-title').value = '';
+  document.getElementById('insp-files-count').textContent = '갤러리에서 검측 사진을 선택하세요';
+  document.getElementById('insp-error').style.display = 'none';
+  document.getElementById('insp-progress-wrap').style.display = 'none';
+  document.getElementById('insp-submit').disabled = false;
+  document.getElementById('inspect-add-modal').classList.add('open');
+}
+function closeInspectAdd(e) {
+  if (e && e.target !== document.getElementById('inspect-add-modal')) return;
+  document.getElementById('inspect-add-modal').classList.remove('open');
+}
+function onInspFilesSelected(ev) {
+  inspFiles = Array.from(ev.target.files || []).filter(f => f.type.startsWith('image/'));
+  const c = document.getElementById('insp-files-count');
+  c.textContent = inspFiles.length ? `${inspFiles.length}장 선택됨` : '갤러리에서 검측 사진을 선택하세요';
+}
+function _inspErr(msg) {
+  const e = document.getElementById('insp-error');
+  e.textContent = msg; e.style.display = 'block';
+}
+
+async function doInspectUpload() {
+  const date = document.getElementById('insp-date').value;
+  const title = document.getElementById('insp-title').value.trim();
+  document.getElementById('insp-error').style.display = 'none';
+  if (!date) return _inspErr('날짜를 입력하세요.');
+  if (!title) return _inspErr('제목을 입력하세요.');
+  if (inspFiles.length === 0) return _inspErr('사진을 1장 이상 선택하세요.');
+
+  const btn = document.getElementById('insp-submit');
+  btn.disabled = true;
+  const wrap = document.getElementById('insp-progress-wrap');
+  const fill = document.getElementById('insp-progress-fill');
+  const lbl = document.getElementById('insp-progress-label');
+  wrap.style.display = 'block';
+
+  const batchId = 'insp_' + Date.now();
+  const base = `sites/${currentSiteCode}/inspections/${batchId}`;
+  const photos = [];
+  let totalBytes = 0;
+
+  try {
+    for (let i = 0; i < inspFiles.length; i++) {
+      const file = inspFiles[i];
+      lbl.textContent = `압축 중... ${i+1}/${inspFiles.length}`;
+      const blob = await compressImage(file);
+      // 확장자를 .jpg로 통일
+      const baseName = (_sanitize(file.name) || `photo_${i}`).replace(/\.[^.]+$/, '');
+      const safe = `${baseName}.jpg`;
+      const path = `${base}/${String(i).padStart(3,'0')}_${safe}`;
+      const ref = storage.ref(path);
+      await new Promise((resolve, reject) => {
+        const task = ref.put(blob, { contentType: 'image/jpeg' });
+        task.on('state_changed',
+          snap => {
+            const filePct = snap.bytesTransferred / snap.totalBytes;
+            const overall = Math.round(((i + filePct) / inspFiles.length) * 100);
+            fill.style.width = overall + '%';
+            lbl.textContent = `업로드 중... ${i+1}/${inspFiles.length} (${overall}%)`;
+          }, reject, resolve);
+      });
+      const url = await ref.getDownloadURL();
+      photos.push({ path, url, name: safe, size: blob.size });
+      totalBytes += blob.size;
+    }
+
+    lbl.textContent = '정보 저장 중...';
+    await _inspColl().doc(batchId).set({
+      date, title,
+      uploader: currentUserName || '익명',
+      createdAt: firebase.firestore.FieldValue.serverTimestamp(),
+      photoCount: photos.length,
+      totalBytes,
+      photos,
+    });
+
+    document.getElementById('inspect-add-modal').classList.remove('open');
+    await loadInspectBatches();
+    alert(`✅ ${photos.length}장 업로드 완료`);
+  } catch (err) {
+    console.error('검측 업로드 실패:', err);
+    _inspErr('업로드 실패: ' + (err.code || err.message || err));
+    btn.disabled = false;
+  }
+}
+
+// ── 회차 ZIP 다운로드 ──
+async function downloadInspectZip(batchId, btn) {
+  const batch = inspectBatches.find(b => b.id === batchId);
+  if (!batch || !batch.photos || !batch.photos.length) { alert('사진이 없습니다.'); return; }
+  const origText = btn ? btn.textContent : '';
+  if (btn) { btn.disabled = true; }
+  try {
+    const zip = new JSZip();
+    const folder = _sanitize(`${batch.date}_${batch.title}_${batch.uploader}`);
+    let done = 0;
+    for (const photo of batch.photos) {
+      try {
+        const ref = storage.ref(photo.path);
+        const blob = (typeof ref.getBlob === 'function')
+          ? await ref.getBlob()
+          : await (await fetch(photo.url)).blob();
+        zip.folder(folder).file(photo.name, blob);
+        done++;
+        if (btn) btn.textContent = `⏳ ${done}/${batch.photos.length}`;
+      } catch (e) {
+        console.warn('사진 실패:', photo.path, e);
+      }
+    }
+    if (done === 0) { alert('다운로드한 사진이 없습니다.'); return; }
+    const zipBlob = await zip.generateAsync({ type: 'blob' });
+    const url = URL.createObjectURL(zipBlob);
+    const a = document.createElement('a');
+    a.href = url; a.download = folder + '.zip';
+    document.body.appendChild(a); a.click(); document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+  } catch (err) {
+    console.error('ZIP 실패:', err);
+    alert('ZIP 생성에 실패했습니다.');
+  } finally {
+    if (btn) { btn.textContent = origText; btn.disabled = false; }
+  }
+}
+
+// ── 회차 삭제 ──
+async function deleteInspectBatch(batchId) {
+  const batch = inspectBatches.find(b => b.id === batchId);
+  if (!batch) return;
+  if (!confirm(`"${batch.date} ${batch.title}" 회차를 삭제할까요?\n사진 ${batch.photoCount||0}장이 영구 삭제됩니다. (다운로드 후 진행하세요)`)) return;
+  try {
+    for (const photo of (batch.photos || [])) {
+      try { await storage.ref(photo.path).delete(); }
+      catch (e) { console.warn('삭제 실패(무시):', photo.path, e.code); }
+    }
+    await _inspColl().doc(batchId).delete();
+    await loadInspectBatches();
+  } catch (err) {
+    console.error('회차 삭제 실패:', err);
+    alert('삭제에 실패했습니다: ' + (err.code || err.message || err));
   }
 }
 
