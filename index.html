@@ -38,7 +38,8 @@ body{background:var(--bg);color:var(--text);min-height:100vh}
 .topbar-title{color:var(--accent);font-size:16px;font-weight:900;flex:1}
 .topbar-site{font-size:12px;color:var(--muted)}
 .topbar-code{font-size:12px;color:var(--accent);font-weight:700;background:rgba(245,166,35,.1);padding:3px 8px;border-radius:6px}
-.btn-sm{padding:7px 14px;border-radius:8px;font-size:12px;font-weight:700;cursor:pointer;border:none;transition:opacity .2s}
+.btn-sm{padding:7px 14px;border-radius:8px;font-size:12px;font-weight:700;cursor:pointer;border:none;transition:opacity .2s;white-space:nowrap}
+.topbar-actions{display:contents}
 .btn-sm:hover{opacity:.85}
 .btn-logout{background:var(--card2);color:var(--muted)}
 .btn-excel{background:var(--green);color:#fff}
@@ -173,8 +174,13 @@ tr:hover td{background:rgba(255,255,255,.02)}
 .load-end{text-align:center;padding:16px;color:var(--muted);font-size:12px;opacity:.6}
 
 @media(max-width:768px){
-  .topbar{padding:0 12px;gap:8px}
-  .topbar-title{font-size:14px}
+  .topbar{height:auto;flex-wrap:wrap;padding:10px 12px;gap:8px 10px}
+  .topbar-title{font-size:15px;flex:0 0 auto}
+  .topbar-site{flex:1 1 auto;text-align:right;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .topbar-code{flex:0 0 auto}
+  /* 버튼 영역: 한 줄 차지 + 균등 그리드(4열) */
+  .topbar-actions{display:grid;flex:1 1 100%;grid-template-columns:repeat(4,1fr);gap:6px}
+  .topbar-actions .btn-sm{width:100%;padding:11px 4px;font-size:12px;text-align:center}
   .content{padding:12px}
   .modal-info{white-space:normal;width:calc(100% - 48px)}
 
@@ -256,13 +262,15 @@ tr:hover td{background:rgba(255,255,255,.02)}
     <div class="topbar-title">📋 펀치매니저</div>
     <div class="topbar-site" id="tb-site"></div>
     <div class="topbar-code" id="tb-code"></div>
-    <button class="btn-sm btn-excel" onclick="exportExcel()">📊 엑셀</button>
-    <button class="btn-sm btn-excel" onclick="downloadPhotosZip()">🗜️ ZIP</button>
-    <button class="btn-sm btn-upload" onclick="openUploadModal()">📤 업로드</button>
-    <button class="btn-sm" style="background:#3B82F6;color:#fff" onclick="openInspect()">🔍 검측</button>
-    <button class="btn-sm" style="background:var(--card2);color:var(--muted)" onclick="window.open('https://lulee4132.github.io/punchmanager-releases/사진대지_생성기.html','_blank')" title="사진대지 생성기">🎨 사진대지</button>
-    <button class="btn-sm" style="background:var(--card2);color:var(--muted)" onclick="window.open('https://lulee4132.github.io/Text-extraction-labelling-Tool/','_blank')" title="텍스트 추출 도구">📝 사진분류</button>
-    <button class="btn-sm btn-logout" onclick="doLogout()">로그아웃</button>
+    <div class="topbar-actions">
+      <button class="btn-sm btn-excel" onclick="exportExcel()">📊 엑셀</button>
+      <button class="btn-sm btn-excel" onclick="downloadPhotosZip()">🗜️ ZIP</button>
+      <button class="btn-sm btn-upload" onclick="openUploadModal()">📤 업로드</button>
+      <button class="btn-sm" style="background:#3B82F6;color:#fff" onclick="openInspect()">🔍 검측</button>
+      <button class="btn-sm" style="background:var(--card2);color:var(--muted)" onclick="window.open('https://lulee4132.github.io/punchmanager-releases/사진대지_생성기.html','_blank')" title="사진대지 생성기">🎨 사진대지</button>
+      <button class="btn-sm" style="background:var(--card2);color:var(--muted)" onclick="window.open('https://lulee4132.github.io/Text-extraction-labelling-Tool/','_blank')" title="텍스트 추출 도구">📝 사진분류</button>
+      <button class="btn-sm btn-logout" onclick="doLogout()">로그아웃</button>
+    </div>
   </div>
 
   <div class="content">
