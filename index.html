@@ -278,7 +278,7 @@ tr:hover td{background:rgba(255,255,255,.02)}
     <div class="topbar-actions">
       <button class="btn-sm btn-excel" onclick="exportExcel()">📊 엑셀</button>
       <button class="btn-sm btn-excel" onclick="downloadPhotosZip()">🗜️ ZIP</button>
-      <button class="btn-sm btn-upload" onclick="openUploadModal()">📤 업로드</button>
+      <button class="btn-sm btn-upload" id="btn-upload-top" onclick="openUploadModal()">📤 업로드</button>
       <button class="btn-sm" style="background:#3B82F6;color:#fff" onclick="openInspect()">🔍 검측</button>
       <button class="btn-sm" style="background:var(--card2);color:var(--muted)" onclick="window.open('https://lulee4132.github.io/punchmanager-releases/사진대지_생성기.html','_blank')" title="사진대지 생성기">🎨 사진대지</button>
       <button class="btn-sm" style="background:var(--card2);color:var(--muted)" onclick="window.open('https://lulee4132.github.io/Text-extraction-labelling-Tool/','_blank')" title="텍스트 추출 도구">📝 사진분류</button>
@@ -712,6 +712,8 @@ function showMain() {
   document.getElementById('tb-code').textContent = currentSiteCode;
   if (isAdmin) document.getElementById('btn-delete-all').style.display = 'block';
   document.getElementById('btn-members').style.display = isAdmin ? '' : 'none';
+  // 업체는 원본 업로드 불가 (열람 전용)
+  document.getElementById('btn-upload-top').style.display = currentRole === 'vendor' ? 'none' : '';
   loadPhotos();
 }
 
@@ -843,11 +845,21 @@ function setSyncBar(show, msg = '') {
   else { bar.classList.remove('show'); }
 }
 
+// 업체(vendor)는 배정된 공종만 열람. 관리자/일반은 전체.
+function basePhotos() {
+  if (currentRole === 'vendor') {
+    const scope = new Set(currentGjScope || []);
+    return allPhotos.filter(p => scope.has(p.gj));
+  }
+  return allPhotos;
+}
+
 function buildFilters() {
-  const dongs = [...new Set(allPhotos.map(p => p.dong).filter(Boolean))].sort();
-  const hos = [...new Set(allPhotos.map(p => p.ho).filter(Boolean))].sort();
-  const gjs = [...new Set(allPhotos.map(p => p.gj).filter(Boolean))].sort();
-  const users = [...new Set(allPhotos.map(p => p.userName).filter(Boolean))].sort();
+  const src = basePhotos();
+  const dongs = [...new Set(src.map(p => p.dong).filter(Boolean))].sort();
+  const hos = [...new Set(src.map(p => p.ho).filter(Boolean))].sort();
+  const gjs = [...new Set(src.map(p => p.gj).filter(Boolean))].sort();
+  const users = [...new Set(src.map(p => p.userName).filter(Boolean))].sort();
 
   setOptions('f-dong', dongs, '전체 동');
   setOptions('f-ho', hos, '전체 호수');
@@ -870,19 +882,20 @@ function applyFilter() {
   const user = document.getElementById('f-user').value;
   const search = document.getElementById('f-search').value.toLowerCase();
 
+  const src = basePhotos();
   // 동이 선택되면 해당 동의 호수만 표시 (계단식)
   if (dong) {
-    const hosForDong = [...new Set(allPhotos
+    const hosForDong = [...new Set(src
       .filter(p => p.dong === dong)
       .map(p => p.ho)
       .filter(Boolean))].sort();
     setOptions('f-ho', hosForDong, '전체 호수');
   } else {
-    const allHos = [...new Set(allPhotos.map(p => p.ho).filter(Boolean))].sort();
+    const allHos = [...new Set(src.map(p => p.ho).filter(Boolean))].sort();
     setOptions('f-ho', allHos, '전체 호수');
   }
 
-  const filtered = allPhotos.filter(p => {
+  const filtered = src.filter(p => {
     if (dong && p.dong !== dong) return false;
     if (ho && p.ho !== ho) return false;
     if (gj && p.gj !== gj) return false;
@@ -910,10 +923,11 @@ function resetFilter() {
 }
 
 function updateStats() {
-  const total = allPhotos.length;
-  const open = allPhotos.filter(p => p.status === 'active').length;
-  const done = allPhotos.filter(p => p.status === 'done').length;
-  const users = new Set(allPhotos.map(p => p.userName).filter(Boolean)).size;
+  const src = basePhotos();
+  const total = src.length;
+  const open = src.filter(p => p.status === 'active').length;
+  const done = src.filter(p => p.status === 'done').length;
+  const users = new Set(src.map(p => p.userName).filter(Boolean)).size;
   // 백그라운드 로딩 중이면 숫자 뒤에 "+" 표기 (아직 더 있다는 뜻)
   const suffix = isFullLoaded ? '' : '+';
   document.getElementById('st-total').textContent = total + suffix;
@@ -1014,7 +1028,7 @@ function _exportExcelInner() {
   const user = document.getElementById('f-user').value;
   const search = document.getElementById('f-search').value.toLowerCase();
 
-  const filtered = allPhotos.filter(p => {
+  const filtered = basePhotos().filter(p => {
     if (dong && p.dong !== dong) return false;
     if (gj && p.gj !== gj) return false;
     if (status && p.status !== status) return false;
@@ -1052,7 +1066,7 @@ async function downloadPhotosZip() {
   const user = document.getElementById('f-user').value;
   const search = document.getElementById('f-search').value.toLowerCase();
 
-  const filtered = allPhotos.filter(p => {
+  const filtered = basePhotos().filter(p => {
     if (dong && p.dong !== dong) return false;
     if (ho && p.ho !== ho) return false;
     if (gj && p.gj !== gj) return false;
