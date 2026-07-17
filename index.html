@@ -283,6 +283,7 @@ tr:hover td{background:rgba(255,255,255,.02)}
       <button class="btn-sm" style="background:var(--card2);color:var(--muted)" onclick="window.open('https://lulee4132.github.io/punchmanager-releases/사진대지_생성기.html','_blank')" title="사진대지 생성기">🎨 사진대지</button>
       <button class="btn-sm" style="background:var(--card2);color:var(--muted)" onclick="window.open('https://lulee4132.github.io/Text-extraction-labelling-Tool/','_blank')" title="텍스트 추출 도구">📝 사진분류</button>
       <button class="btn-sm" id="btn-members" style="display:none;background:#8B5CF6;color:#fff" onclick="openMembers()">👥 멤버</button>
+      <button class="btn-sm" style="background:var(--card2);color:var(--muted)" onclick="openPwModal()">🔑 비밀번호</button>
       <button class="btn-sm btn-logout" onclick="doLogout()">로그아웃</button>
     </div>
   </div>
@@ -484,6 +485,26 @@ tr:hover td{background:rgba(255,255,255,.02)}
   </div>
 </div>
 
+<!-- 비밀번호 변경 모달 -->
+<div id="pw-modal" onclick="closePwModal(event)">
+  <div class="upload-box" style="max-width:400px">
+    <div class="upload-header">
+      <span>🔑 비밀번호 변경</span>
+      <button onclick="closePwModal()">✕</button>
+    </div>
+    <div class="field-wrap">
+      <div class="field-label">현재 비밀번호</div>
+      <input class="field-input" id="pw-cur" type="password" placeholder="현재 비밀번호">
+    </div>
+    <div class="field-wrap">
+      <div class="field-label">새 비밀번호</div>
+      <input class="field-input" id="pw-new" type="password" placeholder="6자 이상">
+    </div>
+    <div id="pw-error" style="display:none;color:var(--red);font-size:13px;margin:6px 0"></div>
+    <button class="btn-sm btn-upload" style="width:100%;padding:13px;font-size:15px;margin-top:8px" onclick="doChangePw(this)">변경</button>
+  </div>
+</div>
+
 <!-- 완료(AFTER) 사진 모달 -->
 <div id="after-modal" onclick="closeAfterModal(event)">
   <div class="upload-box" style="max-width:440px">
@@ -520,6 +541,8 @@ tr:hover td{background:rgba(255,255,255,.02)}
 #after-modal.open{display:flex}
 #member-modal{display:none;position:fixed;inset:0;background:rgba(0,0,0,.75);z-index:640;align-items:center;justify-content:center;padding:24px}
 #member-modal.open{display:flex}
+#pw-modal{display:none;position:fixed;inset:0;background:rgba(0,0,0,.75);z-index:660;align-items:center;justify-content:center;padding:24px}
+#pw-modal.open{display:flex}
 .mem-sec{font-size:12px;font-weight:700;color:var(--muted);letter-spacing:1px;text-transform:uppercase;margin:6px 0 10px}
 .mem-card{background:var(--card2);border:1px solid var(--border);border-radius:12px;padding:14px;margin-bottom:10px}
 .mem-top{font-size:15px;color:var(--text);margin-bottom:6px}
@@ -2096,6 +2119,8 @@ async function loadMembers() {
     const set = new Set(allPhotos.map(p => p.gj).filter(Boolean));
     _members.forEach(m => (m.gjScope || []).forEach(g => set.add(g)));
     _gjOptions = [...set].sort();
+    _members.forEach(m => { _memSel[m.uid] = new Set(m.gjScope || []); });
+    _memExpanded.clear();
     renderMembers();
   } catch (e) {
     body.innerHTML = '<div class="insp-empty">불러오지 못했습니다: ' + (e.code || e.message) + '</div>';
@@ -2119,8 +2144,13 @@ function toggleGj(g, el) {
   else { sel.add(g); el.classList.add('on'); el.textContent = '✓ ' + g; }
 }
 
+const _memExpanded = new Set();
+function toggleMemberExpand(uid) {
+  if (_memExpanded.has(uid)) _memExpanded.delete(uid); else _memExpanded.add(uid);
+  renderMembers();
+}
+
 function renderMembers() {
-  _members.forEach(m => { _memSel[m.uid] = new Set(m.gjScope || []); });
   const pending = _members.filter(m => !m.approved);
   const approved = _members.filter(m => m.approved).sort((a, b) => (a.role > b.role ? 1 : -1));
   const roleBadge = (r) => {
@@ -2128,6 +2158,8 @@ function renderMembers() {
     const [t, c] = map[r] || ['?', '#7A80A0'];
     return `<span class="mem-role" style="color:${c};background:${c}22">${t}</span>`;
   };
+  const delBtn = (m) => `<button class="btn-sm" style="background:transparent;color:var(--red);border:1px solid var(--red)" onclick="deleteMember('${m.uid}','${esc(m.name)}',this)">삭제</button>`;
+
   let html = `<div class="mem-sec">승인 대기 (${pending.length})</div>`;
   if (!pending.length) html += '<div class="insp-empty" style="padding:20px">승인 대기중인 업체가 없습니다</div>';
   pending.forEach(m => {
@@ -2135,17 +2167,36 @@ function renderMembers() {
       <div class="mem-top">👤 <b>${escapeHtml(m.name)}</b> ${roleBadge(m.role)}</div>
       <div class="mem-label">접근 가능한 공종 선택</div>
       ${_chips(m.uid)}
-      <button class="btn-sm btn-excel" style="margin-top:10px" onclick="approveMember('${m.uid}',this)">승인</button>
+      <div style="margin-top:10px;display:flex;gap:8px">
+        <button class="btn-sm btn-excel" onclick="approveMember('${m.uid}',this)">승인</button>
+        ${delBtn(m)}
+      </div>
     </div>`;
   });
+
   html += `<div class="mem-sec" style="margin-top:18px">멤버 (${approved.length})</div>`;
   approved.forEach(m => {
-    const scopeUi = m.role === 'vendor'
-      ? `<div class="mem-label">접근 가능한 공종</div>${_chips(m.uid)}<button class="btn-sm" style="margin-top:10px;background:var(--card2);color:var(--muted);border:1px solid var(--border)" onclick="saveScope('${m.uid}',this)">공종 저장</button>`
-      : '';
+    const open = _memExpanded.has(m.uid);
+    const canDelete = m.role !== 'admin' && m.name !== currentUserName;
+    const scopeCount = (_memSel[m.uid] || new Set()).size;
+    const icon = m.role === 'admin' ? '🛡️' : m.role === 'vendor' ? '👷' : '👤';
+    const summary = (m.role === 'vendor' && !open)
+      ? `<span style="color:var(--muted);font-size:12px">공종 ${scopeCount}개</span>` : '';
+    let detail = '';
+    if (open) {
+      const scopeUi = m.role === 'vendor'
+        ? `<div class="mem-label">접근 가능한 공종</div>${_chips(m.uid)}` : '';
+      const actions = [];
+      if (m.role === 'vendor') actions.push(`<button class="btn-sm" style="background:var(--card2);color:var(--muted);border:1px solid var(--border)" onclick="saveScope('${m.uid}',this)">공종 저장</button>`);
+      if (canDelete) actions.push(delBtn(m));
+      detail = scopeUi + (actions.length ? `<div style="margin-top:10px;display:flex;gap:8px">${actions.join('')}</div>` : '');
+    }
     html += `<div class="mem-card" data-uid="${m.uid}">
-      <div class="mem-top">${m.role === 'admin' ? '🛡️' : m.role === 'vendor' ? '👷' : '👤'} <b>${escapeHtml(m.name)}</b> ${roleBadge(m.role)}</div>
-      ${scopeUi}
+      <div class="mem-top" style="cursor:pointer;display:flex;align-items:center;gap:6px" onclick="toggleMemberExpand('${m.uid}')">
+        <span>${icon} <b>${escapeHtml(m.name)}</b> ${roleBadge(m.role)}</span>
+        <span style="margin-left:auto;display:flex;align-items:center;gap:8px">${summary}<span style="color:var(--muted)">${open ? '▲' : '▼'}</span></span>
+      </div>
+      ${detail}
     </div>`;
   });
   document.getElementById('member-body').innerHTML = html;
@@ -2175,6 +2226,58 @@ async function saveScope(uid, btn) {
   } catch (e) {
     alert('저장 실패: ' + (e.code || e.message));
     btn.disabled = false; btn.textContent = '공종 저장';
+  }
+}
+
+async function deleteMember(uid, name, btn) {
+  if (!confirm(`${name} 님을 삭제할까요?\n다시 로그인하면 승인 대기 상태가 됩니다.`)) return;
+  btn.disabled = true; btn.textContent = '삭제 중...';
+  try {
+    await db.collection('sites').doc(currentSiteCode).collection('members').doc(uid).delete();
+    try {
+      await db.collection('sites').doc(currentSiteCode).update({
+        members: firebase.firestore.FieldValue.arrayRemove(name),
+      });
+    } catch (_) {}
+    await loadMembers();
+  } catch (e) {
+    alert('삭제 실패: ' + (e.code || e.message));
+    btn.disabled = false; btn.textContent = '삭제';
+  }
+}
+
+// ── 비밀번호 변경 ──
+function openPwModal() {
+  document.getElementById('pw-cur').value = '';
+  document.getElementById('pw-new').value = '';
+  document.getElementById('pw-error').style.display = 'none';
+  document.getElementById('pw-modal').classList.add('open');
+}
+function closePwModal(e) {
+  if (e && e.target !== document.getElementById('pw-modal')) return;
+  document.getElementById('pw-modal').classList.remove('open');
+}
+async function doChangePw(btn) {
+  const cur = document.getElementById('pw-cur').value;
+  const nw = document.getElementById('pw-new').value;
+  const err = document.getElementById('pw-error');
+  err.style.display = 'none';
+  if (nw.length < 6) { err.textContent = '새 비밀번호는 6자 이상이어야 합니다.'; err.style.display = 'block'; return; }
+  const u = auth.currentUser;
+  if (!u) { err.textContent = '로그인이 필요합니다. 다시 로그인해주세요.'; err.style.display = 'block'; return; }
+  btn.disabled = true; btn.textContent = '변경 중...';
+  try {
+    const cred = firebase.auth.EmailAuthProvider.credential(u.email, cur);
+    await u.reauthenticateWithCredential(cred);
+    await u.updatePassword(nw);
+    document.getElementById('pw-modal').classList.remove('open');
+    alert('🔑 비밀번호가 변경됐습니다.');
+  } catch (e) {
+    let msg = '변경 실패: ' + (e.code || e.message);
+    if (e.code === 'auth/wrong-password' || e.code === 'auth/invalid-credential') msg = '현재 비밀번호가 올바르지 않습니다.';
+    else if (e.code === 'auth/weak-password') msg = '새 비밀번호는 6자 이상이어야 합니다.';
+    err.textContent = msg; err.style.display = 'block';
+    btn.disabled = false; btn.textContent = '변경';
   }
 }
 
