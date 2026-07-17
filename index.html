@@ -7,6 +7,7 @@
 <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-app-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-firestore-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-storage-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-auth-compat.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
 <style>
@@ -252,7 +253,14 @@ tr:hover td{background:rgba(255,255,255,.02)}
       <div class="field-label">이름</div>
       <input class="field-input" id="inp-name" placeholder="예: 홍길동">
     </div>
+    <div class="field-wrap">
+      <div class="field-label">비밀번호</div>
+      <input class="field-input" id="inp-pw" type="password" placeholder="6자 이상">
+    </div>
     <button class="btn-primary" id="btn-login" onclick="doLogin()">로그인</button>
+    <div style="font-size:11px;color:var(--muted);margin-top:12px;text-align:center;line-height:1.5">
+      처음이면 입력한 비밀번호로 계정이 만들어집니다.<br>업체는 관리자 승인 후 이용할 수 있습니다.
+    </div>
     <div class="error-box" id="login-error" style="display:none"></div>
   </div>
 </div>
@@ -274,6 +282,7 @@ tr:hover td{background:rgba(255,255,255,.02)}
       <button class="btn-sm" style="background:#3B82F6;color:#fff" onclick="openInspect()">🔍 검측</button>
       <button class="btn-sm" style="background:var(--card2);color:var(--muted)" onclick="window.open('https://lulee4132.github.io/punchmanager-releases/사진대지_생성기.html','_blank')" title="사진대지 생성기">🎨 사진대지</button>
       <button class="btn-sm" style="background:var(--card2);color:var(--muted)" onclick="window.open('https://lulee4132.github.io/Text-extraction-labelling-Tool/','_blank')" title="텍스트 추출 도구">📝 사진분류</button>
+      <button class="btn-sm" id="btn-members" style="display:none;background:#8B5CF6;color:#fff" onclick="openMembers()">👥 멤버</button>
       <button class="btn-sm btn-logout" onclick="doLogout()">로그아웃</button>
     </div>
   </div>
@@ -464,6 +473,17 @@ tr:hover td{background:rgba(255,255,255,.02)}
   </div>
 </div>
 
+<!-- 멤버 · 업체 관리 모달 (관리자) -->
+<div id="member-modal" onclick="closeMembers(event)">
+  <div class="inspect-box">
+    <div class="upload-header">
+      <span>👥 멤버 · 업체 관리</span>
+      <button onclick="closeMembers()">✕</button>
+    </div>
+    <div id="member-body"><div class="loading"><div class="spinner"></div>불러오는 중...</div></div>
+  </div>
+</div>
+
 <!-- 완료(AFTER) 사진 모달 -->
 <div id="after-modal" onclick="closeAfterModal(event)">
   <div class="upload-box" style="max-width:440px">
@@ -498,6 +518,16 @@ tr:hover td{background:rgba(255,255,255,.02)}
 #inspect-modal.open,#inspect-add-modal.open{display:flex}
 #after-modal{display:none;position:fixed;inset:0;background:rgba(0,0,0,.75);z-index:640;align-items:center;justify-content:center;padding:24px}
 #after-modal.open{display:flex}
+#member-modal{display:none;position:fixed;inset:0;background:rgba(0,0,0,.75);z-index:640;align-items:center;justify-content:center;padding:24px}
+#member-modal.open{display:flex}
+.mem-sec{font-size:12px;font-weight:700;color:var(--muted);letter-spacing:1px;text-transform:uppercase;margin:6px 0 10px}
+.mem-card{background:var(--card2);border:1px solid var(--border);border-radius:12px;padding:14px;margin-bottom:10px}
+.mem-top{font-size:15px;color:var(--text);margin-bottom:6px}
+.mem-role{font-size:10px;font-weight:700;padding:2px 7px;border-radius:6px;margin-left:6px}
+.mem-label{font-size:12px;color:var(--muted);margin:8px 0 6px}
+.mem-chips{display:flex;flex-wrap:wrap;gap:7px}
+.mem-chip{padding:6px 11px;border-radius:16px;font-size:12px;cursor:pointer;background:var(--card);border:1px solid var(--border);color:var(--muted);user-select:none}
+.mem-chip.on{background:rgba(245,166,35,.15);border-color:var(--accent);color:var(--accent);font-weight:700}
 #inspect-add-modal{z-index:620}
 .inspect-box{background:var(--card);border:1px solid var(--border);border-radius:20px;width:100%;max-width:680px;max-height:90vh;overflow-y:auto;padding:28px;position:relative}
 .insp-card{background:var(--card2);border:1px solid var(--border);border-radius:12px;padding:14px 16px;margin-bottom:10px;display:flex;align-items:center;gap:14px}
@@ -521,12 +551,23 @@ const firebaseConfig = {
 firebase.initializeApp(firebaseConfig);
 const db = firebase.firestore();
 const storage = firebase.storage();
+const auth = firebase.auth();
 
 let allPhotos = [];
 let currentSiteCode = '';
 let currentSiteName = '';
 let currentUserName = '';
 let isAdmin = false;
+let currentRole = 'member';
+let currentGjScope = [];
+
+// 이름+현장코드 → 앱과 동일한 합성 이메일 (sha256 앞 24자리)
+async function synthEmail(name, code) {
+  const key = name.trim().toLowerCase() + '@' + code.trim().toUpperCase();
+  const buf = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(key));
+  const hex = [...new Uint8Array(buf)].map(b => b.toString(16).padStart(2, '0')).join('');
+  return 'u' + hex.substring(0, 24) + '@punch.local';
+}
 
 // ── 페이지네이션 상태 ──
 const PAGE_SIZE = 50;
@@ -546,43 +587,108 @@ document.getElementById('inp-code').addEventListener('keydown', e => {
   if (e.key === 'Enter') document.getElementById('inp-name').focus();
 });
 document.getElementById('inp-name').addEventListener('keydown', e => {
+  if (e.key === 'Enter') document.getElementById('inp-pw').focus();
+});
+document.getElementById('inp-pw').addEventListener('keydown', e => {
   if (e.key === 'Enter') doLogin();
 });
 
 async function doLogin() {
   const code = document.getElementById('inp-code').value.trim().toUpperCase();
   const name = document.getElementById('inp-name').value.trim();
-  const errEl = document.getElementById('login-error');
+  const pw = document.getElementById('inp-pw').value;
   const btn = document.getElementById('btn-login');
+  document.getElementById('login-error').style.display = 'none';
 
   if (!code || code.length !== 6) { showErr('현장 코드 6자리를 입력해주세요'); return; }
   if (!name) { showErr('이름을 입력해주세요'); return; }
+  if (!pw || pw.length < 6) { showErr('비밀번호는 6자 이상 입력해주세요'); return; }
 
   btn.disabled = true;
   btn.textContent = '확인 중...';
-  errEl.style.display = 'none';
 
   try {
-    const doc = await db.collection('sites').doc(code).get();
-    if (!doc.exists) { showErr('존재하지 않는 현장 코드입니다'); btn.disabled=false; btn.textContent='로그인'; return; }
+    const siteDoc = await db.collection('sites').doc(code).get();
+    if (!siteDoc.exists) { showErr('존재하지 않는 현장 코드입니다'); return; }
+    const site = siteDoc.data();
+    const adminName = site.adminName || '';
+    const members = site.members || [];
+    const email = await synthEmail(name, code);
+    const mref = (uid) => db.collection('sites').doc(code).collection('members').doc(uid);
 
-    const data = doc.data();
-    currentSiteCode = code;
-    currentSiteName = data.siteName;
-    currentUserName = name;
-    isAdmin = data.adminName === name;
+    const roleFor = () => adminName === name
+      ? { role: 'admin', approved: true }
+      : (members.includes(name)
+          ? { role: 'member', approved: true }
+          : { role: 'vendor', approved: false });
 
-    sessionStorage.setItem('pm_code', code);
-    sessionStorage.setItem('pm_name', name);
-    sessionStorage.setItem('pm_site', data.siteName);
-    sessionStorage.setItem('pm_admin', isAdmin ? '1' : '0');
+    let uid = null;
+    try {
+      const cred = await auth.signInWithEmailAndPassword(email, pw);
+      uid = cred.user.uid;
+    } catch (e) {
+      if (e.code === 'auth/operation-not-allowed') {
+        showErr('이메일 로그인이 비활성화되어 있습니다. (관리자 콘솔 설정 필요)'); return;
+      }
+      // 계정 없음 or 비번 오류 → 최초 로그인(가입) 시도
+      const { role, approved } = roleFor();
+      try {
+        const cred = await auth.createUserWithEmailAndPassword(email, pw);
+        await mref(cred.user.uid).set({
+          name, role, gjScope: [], approved, email,
+          createdAt: firebase.firestore.FieldValue.serverTimestamp(),
+        });
+        if (!approved) { await auth.signOut(); showPendingWeb(); return; }
+        finishLogin(code, site.siteName, name, role, []);
+      } catch (e2) {
+        if (e2.code === 'auth/email-already-in-use') {
+          showErr('비밀번호가 올바르지 않습니다.');
+        } else {
+          showErr('가입 실패: ' + (e2.message || e2.code));
+        }
+      }
+      return;
+    }
 
-    showMain();
+    // 로그인 성공 → member 문서 확인
+    const mdoc = await mref(uid).get();
+    if (!mdoc.exists) {
+      // self-heal: 계정은 있으나 문서 없음
+      const { role, approved } = roleFor();
+      await mref(uid).set({
+        name, role, gjScope: [], approved, email,
+        createdAt: firebase.firestore.FieldValue.serverTimestamp(),
+      });
+      if (!approved) { await auth.signOut(); showPendingWeb(); return; }
+      finishLogin(code, site.siteName, name, role, []);
+      return;
+    }
+    const m = mdoc.data();
+    if (!m.approved) { await auth.signOut(); showErr('관리자 승인 대기중입니다. 승인 후 로그인해주세요.'); return; }
+    finishLogin(code, site.siteName, name, m.role || 'member', m.gjScope || []);
   } catch(e) {
-    showErr('연결 오류: ' + e.message);
-    btn.disabled = false;
-    btn.textContent = '로그인';
+    showErr('연결 오류: ' + (e.message || e));
   }
+}
+
+function finishLogin(code, siteName, name, role, gjScope) {
+  currentSiteCode = code;
+  currentSiteName = siteName;
+  currentUserName = name;
+  currentRole = role;
+  currentGjScope = gjScope || [];
+  isAdmin = role === 'admin';
+  sessionStorage.setItem('pm_code', code);
+  sessionStorage.setItem('pm_name', name);
+  sessionStorage.setItem('pm_site', siteName);
+  sessionStorage.setItem('pm_admin', isAdmin ? '1' : '0');
+  sessionStorage.setItem('pm_role', role);
+  sessionStorage.setItem('pm_scope', JSON.stringify(gjScope || []));
+  showMain();
+}
+
+function showPendingWeb() {
+  showErr('업체 계정으로 가입 신청됐습니다. 관리자 승인 후 로그인할 수 있습니다.');
 }
 
 function showErr(msg) {
@@ -595,7 +701,7 @@ function showErr(msg) {
 
 function doLogout() {
   sessionStorage.clear();
-  location.reload();
+  auth.signOut().finally(() => location.reload());
 }
 
 // ── 메인 화면 ──
@@ -605,6 +711,7 @@ function showMain() {
   document.getElementById('tb-site').textContent = currentSiteName;
   document.getElementById('tb-code').textContent = currentSiteCode;
   if (isAdmin) document.getElementById('btn-delete-all').style.display = 'block';
+  document.getElementById('btn-members').style.display = isAdmin ? '' : 'none';
   loadPhotos();
 }
 
@@ -1949,6 +2056,114 @@ async function confirmDeleteAll() {
 }
 
 // ── 자동 로그인 (세션) ──
+// ════════════════════════════════════════════════
+// ── 멤버 · 업체 관리 (관리자) ──
+// ════════════════════════════════════════════════
+let _members = [];
+let _gjOptions = [];
+const _memSel = {};
+
+async function openMembers() {
+  document.getElementById('member-modal').classList.add('open');
+  await loadMembers();
+}
+function closeMembers(e) {
+  if (e && e.target !== document.getElementById('member-modal')) return;
+  document.getElementById('member-modal').classList.remove('open');
+}
+
+async function loadMembers() {
+  const body = document.getElementById('member-body');
+  body.innerHTML = '<div class="loading"><div class="spinner"></div>불러오는 중...</div>';
+  try {
+    const snap = await db.collection('sites').doc(currentSiteCode).collection('members').get();
+    _members = snap.docs.map(d => ({ uid: d.id, ...d.data() }));
+    // 공종 목록 = 사진에 실제 사용된 공종 ∪ 이미 배정된 공종
+    const set = new Set(allPhotos.map(p => p.gj).filter(Boolean));
+    _members.forEach(m => (m.gjScope || []).forEach(g => set.add(g)));
+    _gjOptions = [...set].sort();
+    renderMembers();
+  } catch (e) {
+    body.innerHTML = '<div class="insp-empty">불러오지 못했습니다: ' + (e.code || e.message) + '</div>';
+  }
+}
+
+function _chips(uid) {
+  const sel = _memSel[uid] || new Set();
+  return '<div class="mem-chips">' + _gjOptions.map(g => {
+    const on = sel.has(g);
+    const safe = g.replace(/'/g, "\\'");
+    return `<span class="mem-chip${on ? ' on' : ''}" onclick="toggleGj('${safe}',this)">${on ? '✓ ' : ''}${escapeHtml(g)}</span>`;
+  }).join('') + '</div>';
+}
+
+function toggleGj(g, el) {
+  const card = el.closest('.mem-card');
+  const uid = card.dataset.uid;
+  const sel = _memSel[uid] || (_memSel[uid] = new Set());
+  if (sel.has(g)) { sel.delete(g); el.classList.remove('on'); el.textContent = g; }
+  else { sel.add(g); el.classList.add('on'); el.textContent = '✓ ' + g; }
+}
+
+function renderMembers() {
+  _members.forEach(m => { _memSel[m.uid] = new Set(m.gjScope || []); });
+  const pending = _members.filter(m => !m.approved);
+  const approved = _members.filter(m => m.approved).sort((a, b) => (a.role > b.role ? 1 : -1));
+  const roleBadge = (r) => {
+    const map = { admin: ['관리자', '#F5A623'], member: ['일반', '#5C6BC0'], vendor: ['업체', '#2ECC71'] };
+    const [t, c] = map[r] || ['?', '#7A80A0'];
+    return `<span class="mem-role" style="color:${c};background:${c}22">${t}</span>`;
+  };
+  let html = `<div class="mem-sec">승인 대기 (${pending.length})</div>`;
+  if (!pending.length) html += '<div class="insp-empty" style="padding:20px">승인 대기중인 업체가 없습니다</div>';
+  pending.forEach(m => {
+    html += `<div class="mem-card" data-uid="${m.uid}">
+      <div class="mem-top">👤 <b>${escapeHtml(m.name)}</b> ${roleBadge(m.role)}</div>
+      <div class="mem-label">접근 가능한 공종 선택</div>
+      ${_chips(m.uid)}
+      <button class="btn-sm btn-excel" style="margin-top:10px" onclick="approveMember('${m.uid}',this)">승인</button>
+    </div>`;
+  });
+  html += `<div class="mem-sec" style="margin-top:18px">멤버 (${approved.length})</div>`;
+  approved.forEach(m => {
+    const scopeUi = m.role === 'vendor'
+      ? `<div class="mem-label">접근 가능한 공종</div>${_chips(m.uid)}<button class="btn-sm" style="margin-top:10px;background:var(--card2);color:var(--muted);border:1px solid var(--border)" onclick="saveScope('${m.uid}',this)">공종 저장</button>`
+      : '';
+    html += `<div class="mem-card" data-uid="${m.uid}">
+      <div class="mem-top">${m.role === 'admin' ? '🛡️' : m.role === 'vendor' ? '👷' : '👤'} <b>${escapeHtml(m.name)}</b> ${roleBadge(m.role)}</div>
+      ${scopeUi}
+    </div>`;
+  });
+  document.getElementById('member-body').innerHTML = html;
+}
+
+async function approveMember(uid, btn) {
+  btn.disabled = true; btn.textContent = '처리 중...';
+  try {
+    await db.collection('sites').doc(currentSiteCode).collection('members').doc(uid).update({
+      approved: true, gjScope: [...(_memSel[uid] || [])],
+    });
+    await loadMembers();
+  } catch (e) {
+    alert('승인 실패: ' + (e.code || e.message));
+    btn.disabled = false; btn.textContent = '승인';
+  }
+}
+
+async function saveScope(uid, btn) {
+  btn.disabled = true; btn.textContent = '저장 중...';
+  try {
+    await db.collection('sites').doc(currentSiteCode).collection('members').doc(uid).update({
+      gjScope: [...(_memSel[uid] || [])],
+    });
+    btn.textContent = '저장됨 ✓';
+    setTimeout(() => { btn.disabled = false; btn.textContent = '공종 저장'; }, 1200);
+  } catch (e) {
+    alert('저장 실패: ' + (e.code || e.message));
+    btn.disabled = false; btn.textContent = '공종 저장';
+  }
+}
+
 window.onload = () => {
   const code = sessionStorage.getItem('pm_code');
   const name = sessionStorage.getItem('pm_name');
@@ -1959,6 +2174,9 @@ window.onload = () => {
     currentUserName = name;
     currentSiteName = site || '';
     isAdmin = admin === '1';
+    currentRole = sessionStorage.getItem('pm_role') || (isAdmin ? 'admin' : 'member');
+    try { currentGjScope = JSON.parse(sessionStorage.getItem('pm_scope') || '[]'); }
+    catch(_) { currentGjScope = []; }
     document.getElementById('inp-code').value = code;
     document.getElementById('inp-name').value = name;
     showMain();
