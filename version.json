@@ -1,5 +1,5 @@
 {
-  "version": "1.0.8",
-  "apk_url": "https://github.com/lulee4132/punchmanager-releases/releases/download/v.1.0.8/app-release.apk",
-  "release_notes": "• 항목 수정 기능 추가, 카메라 핀치 줌 추가, 동기화 안정성 개선 (중복 데이터 방지), 웹앱 동/호수 필터 추가"
+  "version": "2.0.0",
+  "apk_url": "https://github.com/lulee4132/punchmanager-releases/releases/download/v.2.0.0/app-release.apk",
+  "release_notes": "• 종결 시 완료(AFTER) 사진 첨부 및 BEFORE/AFTER 연동\n• 등급별 권한(관리자/업체) — 승인 후 로그인, 공종별 접근\n• 비밀번호 로그인 도입, 비밀번호 변경\n• 기기 변경 시 데이터 가져오기 + 속도 개선\n• 화이트보드 미리보기/세로 촬영 잘림 수정, 사진 로딩 오류 수정"
 }
