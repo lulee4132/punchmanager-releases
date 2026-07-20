@@ -796,8 +796,18 @@ async function loadAllInBackground(token) {
 
 async function fetchNextPage() {
   if (!hasMore) return 0;
-  let q = db.collection('sites').doc(currentSiteCode)
-      .collection('photos').orderBy('ts', 'desc').limit(PAGE_SIZE);
+  let q = db.collection('sites').doc(currentSiteCode).collection('photos');
+
+  // 업체(vendor)는 배정된 공종만 "서버 쿼리"로 제한.
+  // ⚠️ 엄격 보안룰에서는 전체 조회가 거부되므로 클라이언트 필터만으로는 부족.
+  //    (gj in [...] + orderBy ts 는 복합 색인 필요 — 콘솔 안내 링크로 생성)
+  if (currentRole === 'vendor') {
+    const scope = (currentGjScope || []).slice(0, 30); // 'in' 최대 30개
+    if (scope.length === 0) { hasMore = false; return 0; }
+    q = q.where('gj', 'in', scope);
+  }
+
+  q = q.orderBy('ts', 'desc').limit(PAGE_SIZE);
   if (lastDoc) q = q.startAfter(lastDoc);
 
   const snap = await q.get();
@@ -980,7 +990,9 @@ function renderTable(photos) {
       ? `<div class="thumb-wrap"><img class="thumb" src="${p.afterUrl}" onclick="openImg('${p.afterUrl}','${esc(p.wichi)}','후(완료) · ${esc((p.afterDate||'')+' · '+(p.afterUser||''))}')" loading="lazy"><span class="thumb-tag tag-after">후</span></div>`
       : '';
     const thumb = `<div class="thumb-cell">${beforeImg}${afterImg}</div>`;
-    const canToggle = (p.userName === currentUserName) || isAdmin;
+    // 업체는 배정된 공종 항목에 한해 완료(AFTER) 처리 가능 — 앱/보안룰과 동일
+    const canToggle = (p.userName === currentUserName) || isAdmin
+      || (currentRole === 'vendor' && (currentGjScope || []).includes(p.gj));
     let badge;
     if (canToggle) {
       badge = p.status === 'done'
@@ -1880,7 +1892,10 @@ async function doUpload() {
 // ── 상태 토글 (자기가 올린 것만) ──
 async function toggleStatus(photoId) {
   const photo = allPhotos.find(p => p.id === photoId);
-  if (!photo || (photo.userName !== currentUserName && !isAdmin)) return;
+  if (!photo) return;
+  const mayToggle = photo.userName === currentUserName || isAdmin
+    || (currentRole === 'vendor' && (currentGjScope || []).includes(photo.gj));
+  if (!mayToggle) return;
 
   if (photo.status === 'done') {
     // 완료 → 진행중 (재개): AFTER 사진 삭제 (앱과 동일 동작)
