@@ -1,5 +1,5 @@
 {
-  "version": "2.0.0",
-  "apk_url": "https://github.com/lulee4132/punchmanager-releases/releases/download/v2.0.0/punchmanager_v2.0.0_app-release.apk",
-  "release_notes": "• 종결 시 완료(AFTER) 사진 첨부 및 BEFORE/AFTER 연동\n• 등급별 권한(관리자/업체) — 승인 후 로그인, 공종별 접근\n• 비밀번호 로그인 도입, 비밀번호 변경\n• 기기 변경 시 데이터 가져오기 + 속도 개선\n• 화이트보드 미리보기/세로 촬영 잘림 수정, 사진 로딩 오류 수정"
+  "version": "2.1.0",
+  "apk_url": "https://github.com/lulee4132/punchmanager-releases/releases/download/v2.1.0/punchmanager_v2.1.0_app-release.apk",
+  "release_notes": "• 평면도 위치 핀(키플랜) — 사진 또는 PDF 평면도로 위치 표시\n• 사진 키플랜: 확대·이동해 보이는 영역을 그대로 키플랜으로\n• PDF 키플랜: 확대해 정확히 핀 지정, 항상 가로로 표시\n• 그리기 화면 두 손가락 확대/축소 — 세밀한 작도\n• 키플랜 핀 크게 표시"
 }
