@@ -266,6 +266,7 @@ let formula = {nodes: [], topOps: []};
 // Group picking mode
 let pickMode = false;
 let pickedIdxs = new Set();
+let openCats = new Set();   // categories the user has expanded (persist across rebuilds)
 
 let activeUnit = null;
 
@@ -398,6 +399,7 @@ function indicesInGroups(){
 // ============ OPTION LIST (bottom) ============
 function buildOptList(filter=''){
   const list = document.getElementById('optList');
+  const prevScroll = list.scrollTop;
   list.innerHTML = '';
   const f = filter.trim().toLowerCase();
   const full = slotUsedCount() >= MAX_OPTS;
@@ -419,7 +421,7 @@ function buildOptList(filter=''){
     const grpSel = grpSet.has(cat.name);
     const div = document.createElement('div');
     const hasSel = grpSel || matchedVals.some(v=>selSet.has(cat.name+' '+v));
-    div.className = 'cat-box' + (f||hasSel ? ' open' : '') + (grpSel ? ' group-selected' : '');
+    div.className = 'cat-box' + ((f||hasSel||openCats.has(cat.name)) ? ' open' : '') + (grpSel ? ' group-selected' : '');
     const grpBtnDisabled = (!grpSel && full) ? ' disabled' : '';
     div.innerHTML = `<div class="cat-h"><span class="cat-name">${cat.label}</span>`+
       `<button class="grp-sel${grpSel?' on':''}"${grpBtnDisabled}>${grpSel?'그룹 해제':'그룹'}</button>`+
@@ -445,7 +447,7 @@ function buildOptList(filter=''){
     div.appendChild(body);
     const gb = div.querySelector('.grp-sel');
     gb.onclick = (e)=>{ e.stopPropagation(); if(gb.disabled) return; toggleCatGroup(cat.name); };
-    div.querySelector('.cat-h').onclick = ()=>div.classList.toggle('open');
+    div.querySelector('.cat-h').onclick = ()=>{ const op=div.classList.toggle('open'); if(op) openCats.add(cat.name); else openCats.delete(cat.name); };
     return div;
   };
   (DATA.groups||[]).forEach(g=>{
@@ -467,6 +469,7 @@ function buildOptList(filter=''){
     });
     if(any) list.appendChild(gWrap);
   });
+  list.scrollTop = prevScroll;
 }
 
 function toggleOpt(cat,val){
