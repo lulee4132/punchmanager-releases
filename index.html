@@ -282,6 +282,9 @@ tr:hover td{background:rgba(255,255,255,.02)}
       <button class="btn-sm" style="background:#3B82F6;color:#fff" onclick="openInspect()">🔍 검측</button>
       <button class="btn-sm" style="background:var(--card2);color:var(--muted)" onclick="window.open('https://lulee4132.github.io/punchmanager-releases/사진대지_생성기.html','_blank')" title="사진대지 생성기">🎨 사진대지</button>
       <button class="btn-sm" style="background:var(--card2);color:var(--muted)" onclick="window.open('https://lulee4132.github.io/Text-extraction-labelling-Tool/','_blank')" title="텍스트 추출 도구">📝 사진분류</button>
+      <!-- Schedule: 구조 일람표(PDF)→엑셀 추출 도구. Python 백엔드가 필요하므로
+           호스팅 후 아래 SCHEDULE_URL 값을 실제 주소로 교체하세요. -->
+      <button class="btn-sm" style="background:var(--card2);color:var(--muted)" onclick="window.open(SCHEDULE_URL,'_blank')" title="구조 일람표 추출 (PDF→엑셀)">📐 Schedule</button>
       <button class="btn-sm" id="btn-members" style="display:none;background:#8B5CF6;color:#fff" onclick="openMembers()">👥 멤버</button>
       <button class="btn-sm" style="background:var(--card2);color:var(--muted)" onclick="openPwModal()">🔑 비밀번호</button>
       <button class="btn-sm btn-logout" onclick="doLogout()">로그아웃</button>
@@ -561,6 +564,12 @@ tr:hover td{background:rgba(255,255,255,.02)}
 .insp-empty{text-align:center;color:var(--muted);padding:40px 0;font-size:14px}
 </style>
 <script>
+// ── Schedule 도구 주소 ──
+// 구조 일람표(PDF)→엑셀 추출 도구. Python 백엔드는 Google Cloud Run에 배포됨
+// (프로젝트 punch-manager-1415a, 서울 리전, scale-to-zero). 재배포는
+// structural-schedule-extractor/deploy.sh 참고.
+const SCHEDULE_URL = 'https://schedule-extractor-310410880464.asia-northeast3.run.app/';
+
 // ── Firebase 설정 ──
 const firebaseConfig = {
   apiKey: "AIzaSyDnt2_lExGA6oES2jdDFHk4SyJEf6twBPo",
