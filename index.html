@@ -2191,8 +2191,9 @@ function renderMembers() {
       <div class="mem-top">👤 <b>${escapeHtml(m.name)}</b> ${roleBadge(m.role)}</div>
       <div class="mem-label">접근 가능한 공종 선택</div>
       ${_chips(m.uid)}
-      <div style="margin-top:10px;display:flex;gap:8px">
-        <button class="btn-sm btn-excel" onclick="approveMember('${m.uid}',this)">승인</button>
+      <div style="margin-top:10px;display:flex;gap:8px;flex-wrap:wrap">
+        <button class="btn-sm btn-excel" onclick="approveMember('${m.uid}',this)">업체로 승인</button>
+        <button class="btn-sm" style="background:#5C6BC0;color:#fff" onclick="approveAsMember('${m.uid}','${esc(m.name)}',this)">일반 멤버로 승인</button>
         ${delBtn(m)}
       </div>
     </div>`;
@@ -2235,7 +2236,26 @@ async function approveMember(uid, btn) {
     await loadMembers();
   } catch (e) {
     alert('승인 실패: ' + (e.code || e.message));
-    btn.disabled = false; btn.textContent = '승인';
+    btn.disabled = false; btn.textContent = '업체로 승인';
+  }
+}
+
+// 승인 대기자를 '일반 멤버'로 승격 — 역할 변경 + 현장 members 목록에 이름 추가
+async function approveAsMember(uid, name, btn) {
+  btn.disabled = true; btn.textContent = '처리 중...';
+  try {
+    await db.collection('sites').doc(currentSiteCode).collection('members').doc(uid).update({
+      approved: true, role: 'member', gjScope: [],
+    });
+    try {
+      await db.collection('sites').doc(currentSiteCode).update({
+        members: firebase.firestore.FieldValue.arrayUnion(name),
+      });
+    } catch (_) {}
+    await loadMembers();
+  } catch (e) {
+    alert('멤버 승인 실패: ' + (e.code || e.message));
+    btn.disabled = false; btn.textContent = '일반 멤버로 승인';
   }
 }
 
