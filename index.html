@@ -278,6 +278,8 @@ tr:hover td{background:rgba(255,255,255,.02)}
     <div class="topbar-actions">
       <button class="btn-sm btn-excel" onclick="exportExcel()">📊 엑셀</button>
       <button class="btn-sm btn-excel" onclick="downloadPhotosZip()">🗜️ ZIP</button>
+      <button class="btn-sm" id="btn-select" style="background:var(--card2);color:var(--muted)" onclick="toggleSelectMode()">☑️ 선택</button>
+      <button class="btn-sm btn-excel" id="btn-zip-selected" style="display:none" onclick="downloadSelectedZip()">🗜️ 선택 ZIP (0)</button>
       <button class="btn-sm btn-upload" id="btn-upload-top" onclick="openUploadModal()">📤 업로드</button>
       <button class="btn-sm" style="background:#3B82F6;color:#fff" onclick="openInspect()">🔍 검측</button>
       <button class="btn-sm" style="background:var(--card2);color:var(--muted)" onclick="window.open('https://lulee4132.github.io/punchmanager-releases/사진대지_생성기.html','_blank')" title="사진대지 생성기">🎨 사진대지</button>
@@ -314,6 +316,10 @@ tr:hover td{background:rgba(255,255,255,.02)}
       </select>
       <select class="filter-select" id="f-user" onchange="applyFilter()"><option value="">전체 인원</option></select>
       <input class="filter-input" id="f-search" placeholder="🔍 위치, 내용 검색" oninput="applyFilter()">
+      <span class="filter-label">기간</span>
+      <input type="date" class="filter-select" id="f-date-from" onchange="applyFilter()" style="min-width:140px" title="시작일">
+      <span class="filter-label">~</span>
+      <input type="date" class="filter-select" id="f-date-to" onchange="applyFilter()" style="min-width:140px" title="종료일">
       <button class="btn-sm" style="background:var(--card2);color:var(--muted)" onclick="resetFilter()">초기화</button>
     </div>
 
@@ -586,6 +592,8 @@ const storage = firebase.storage();
 const auth = firebase.auth();
 
 let allPhotos = [];
+let selectMode = false;              // 선택 모드 on/off
+const selectedIds = new Set();       // 선택된 항목 id
 let currentSiteCode = '';
 let currentSiteName = '';
 let currentUserName = '';
@@ -916,13 +924,53 @@ function setOptions(id, arr, placeholder) {
     arr.map(v => `<option value="${v}"${v===cur?' selected':''}>${v}</option>`).join('');
 }
 
-function applyFilter() {
+// 날짜를 YYYYMMDD 키로 정규화 (앱 '2026.08.27' / 웹 '2026-08-27' 모두 지원)
+function photoDateKey(p) {
+  if (p.date) {
+    const d = String(p.date).replace(/\D/g, '');
+    if (d.length >= 8) return d.slice(0, 8);
+  }
+  if (p.ts) {
+    const t = new Date(p.ts);
+    return `${t.getFullYear()}${String(t.getMonth()+1).padStart(2,'0')}${String(t.getDate()).padStart(2,'0')}`;
+  }
+  return '';
+}
+function _dateInRange(p) {
+  const el1 = document.getElementById('f-date-from');
+  const el2 = document.getElementById('f-date-to');
+  const from = ((el1 && el1.value) || '').replace(/\D/g, '');
+  const to = ((el2 && el2.value) || '').replace(/\D/g, '');
+  if (!from && !to) return true;
+  const k = photoDateKey(p);
+  if (!k) return false;
+  if (from && k < from) return false;
+  if (to && k > to) return false;
+  return true;
+}
+// 모든 화면(목록·엑셀·ZIP)이 공유하는 필터 조건
+function photoPassesFilters(p) {
   const dong = document.getElementById('f-dong').value;
   const ho = document.getElementById('f-ho').value;
   const gj = document.getElementById('f-gj').value;
   const status = document.getElementById('f-status').value;
   const user = document.getElementById('f-user').value;
   const search = document.getElementById('f-search').value.toLowerCase();
+  if (dong && p.dong !== dong) return false;
+  if (ho && p.ho !== ho) return false;
+  if (gj && p.gj !== gj) return false;
+  if (status && p.status !== status) return false;
+  if (user && p.userName !== user) return false;
+  if (!_dateInRange(p)) return false;
+  if (search) {
+    const hay = `${p.wichi} ${p.content} ${p.dong} ${p.gj} ${p.userName}`.toLowerCase();
+    if (!hay.includes(search)) return false;
+  }
+  return true;
+}
+
+function applyFilter() {
+  const dong = document.getElementById('f-dong').value;
 
   const src = basePhotos();
   // 동이 선택되면 해당 동의 호수만 표시 (계단식)
@@ -937,18 +985,7 @@ function applyFilter() {
     setOptions('f-ho', allHos, '전체 호수');
   }
 
-  const filtered = src.filter(p => {
-    if (dong && p.dong !== dong) return false;
-    if (ho && p.ho !== ho) return false;
-    if (gj && p.gj !== gj) return false;
-    if (status && p.status !== status) return false;
-    if (user && p.userName !== user) return false;
-    if (search) {
-      const hay = `${p.wichi} ${p.content} ${p.dong} ${p.gj} ${p.userName}`.toLowerCase();
-      if (!hay.includes(search)) return false;
-    }
-    return true;
-  });
+  const filtered = src.filter(photoPassesFilters);
 
   renderTable(filtered);
   document.getElementById('tbl-count').textContent = `${filtered.length}개`;
@@ -961,7 +998,40 @@ function resetFilter() {
   document.getElementById('f-status').value = '';
   document.getElementById('f-user').value = '';
   document.getElementById('f-search').value = '';
+  const df = document.getElementById('f-date-from');
+  const dt = document.getElementById('f-date-to');
+  if (df) df.value = '';
+  if (dt) dt.value = '';
   applyFilter();
+}
+
+// ── 선택 모드 ──
+function toggleSelectMode() {
+  selectMode = !selectMode;
+  if (!selectMode) selectedIds.clear();
+  const b = document.getElementById('btn-select');
+  b.style.background = selectMode ? 'var(--accent)' : 'var(--card2)';
+  b.style.color = selectMode ? '#000' : 'var(--muted)';
+  b.textContent = selectMode ? '✖ 선택 해제' : '☑️ 선택';
+  document.getElementById('btn-zip-selected').style.display = selectMode ? '' : 'none';
+  updateSelCount();
+  applyFilter(); // 체크박스 열 표시/숨김 재렌더
+}
+function toggleSelect(id) {
+  if (selectedIds.has(id)) selectedIds.delete(id); else selectedIds.add(id);
+  updateSelCount();
+}
+function toggleSelectAll(el) {
+  const boxes = document.querySelectorAll('.row-check');
+  boxes.forEach(cb => {
+    cb.checked = el.checked;
+    if (el.checked) selectedIds.add(cb.dataset.id); else selectedIds.delete(cb.dataset.id);
+  });
+  updateSelCount();
+}
+function updateSelCount() {
+  const b = document.getElementById('btn-zip-selected');
+  if (b) b.textContent = `🗜️ 선택 ZIP (${selectedIds.size})`;
 }
 
 function updateStats() {
@@ -1015,7 +1085,11 @@ function renderTable(photos) {
     const delBtn = isAdmin
       ? `<td class="cell-del" data-label="관리"><button class="btn-del-row" onclick="deleteRow('${p.id}',this)">🗑️ 삭제</button></td>`
       : '';
+    const checkCell = selectMode
+      ? `<td data-label="선택" style="text-align:center"><input type="checkbox" class="row-check" data-id="${p.id}" ${selectedIds.has(p.id)?'checked':''} onclick="toggleSelect('${p.id}')" style="width:18px;height:18px;accent-color:var(--accent)"></td>`
+      : '';
     return `<tr id="row-${p.id}">
+      ${checkCell}
       <td>${thumb}</td>
       <td data-label="위치">${p.dong || '-'} <small style="color:var(--muted)">${p.room || ''}</small></td>
       <td data-label="공종">${p.gj || '-'}</td>
@@ -1030,6 +1104,7 @@ function renderTable(photos) {
   document.getElementById('tbl-body').innerHTML = `
     <table>
       <thead><tr>
+        ${selectMode ? '<th style="text-align:center"><input type="checkbox" onclick="toggleSelectAll(this)" title="전체 선택" style="width:18px;height:18px;accent-color:var(--accent)"></th>' : ''}
         <th>사진</th><th>위치</th><th>공종</th><th>상세위치</th><th>내용</th><th>상태</th><th>일자/작성자</th>${isAdmin ? '<th></th>' : ''}
       </tr></thead>
       <tbody>${rows}</tbody>
@@ -1066,23 +1141,7 @@ async function exportExcel() {
   _exportExcelInner();
 }
 function _exportExcelInner() {
-  const dong = document.getElementById('f-dong').value;
-  const gj = document.getElementById('f-gj').value;
-  const status = document.getElementById('f-status').value;
-  const user = document.getElementById('f-user').value;
-  const search = document.getElementById('f-search').value.toLowerCase();
-
-  const filtered = basePhotos().filter(p => {
-    if (dong && p.dong !== dong) return false;
-    if (gj && p.gj !== gj) return false;
-    if (status && p.status !== status) return false;
-    if (user && p.userName !== user) return false;
-    if (search) {
-      const hay = `${p.wichi} ${p.content} ${p.dong} ${p.gj} ${p.userName}`.toLowerCase();
-      if (!hay.includes(search)) return false;
-    }
-    return true;
-  });
+  const filtered = basePhotos().filter(photoPassesFilters);
 
   const data = [['동', '호수', '공간', '공종', '상세위치', '내용', '상태', '일자', '작성자', '사진URL(BEFORE)', '완료일', '완료자', '완료사진URL(AFTER)']];
   filtered.forEach(p => data.push([
@@ -1103,35 +1162,26 @@ function _exportExcelInner() {
 // ── ZIP 다운로드 ──
 async function downloadPhotosZip() {
   await ensureFullLoad();
-  const dong = document.getElementById('f-dong').value;
-  const ho = document.getElementById('f-ho').value;
-  const gj = document.getElementById('f-gj').value;
-  const status = document.getElementById('f-status').value;
-  const user = document.getElementById('f-user').value;
-  const search = document.getElementById('f-search').value.toLowerCase();
-
-  const filtered = basePhotos().filter(p => {
-    if (dong && p.dong !== dong) return false;
-    if (ho && p.ho !== ho) return false;
-    if (gj && p.gj !== gj) return false;
-    if (status && p.status !== status) return false;
-    if (user && p.userName !== user) return false;
-    if (search) {
-      const hay = `${p.wichi} ${p.content} ${p.dong} ${p.gj} ${p.userName}`.toLowerCase();
-      if (!hay.includes(search)) return false;
-    }
-    return true;
-  });
-
+  const filtered = basePhotos().filter(photoPassesFilters);
   if (filtered.length === 0) {
     alert('다운로드할 사진이 없습니다.');
     return;
   }
+  await zipPhotos(filtered, event.target.closest('button'), '🗜️ ZIP');
+}
 
-  const btn = event.target.closest('button');
-  const origText = btn.textContent;
-  btn.textContent = '⏳ 다운로드 중...';
-  btn.disabled = true;
+// 선택 항목만 ZIP 다운로드
+async function downloadSelectedZip() {
+  await ensureFullLoad();
+  const sel = basePhotos().filter(p => selectedIds.has(p.id));
+  if (sel.length === 0) { alert('선택된 항목이 없습니다.'); return; }
+  await zipPhotos(sel, event.target.closest('button'), null);
+}
+
+// 사진 목록을 받아 공종별 폴더로 ZIP 생성·다운로드 (공용)
+async function zipPhotos(filtered, btn, restoreText) {
+  const origText = btn ? btn.textContent : '';
+  if (btn) { btn.textContent = '⏳ 다운로드 중...'; btn.disabled = true; }
 
   try {
     const zip = new JSZip();
@@ -1161,7 +1211,7 @@ async function downloadPhotosZip() {
 
         zip.folder(folderPath).file(fileName, blob);
         downloaded++;
-        btn.textContent = `⏳ ${downloaded}/${filtered.length}`;
+        if (btn) btn.textContent = `⏳ ${downloaded}/${filtered.length}`;
       } catch (err) {
         if (!firstError) firstError = err;
         console.warn(`사진 다운로드 실패 (ts=${photo.ts}, ${photo.wichi}):`, err);
@@ -1194,8 +1244,8 @@ async function downloadPhotosZip() {
     console.error('ZIP 생성 실패:', err);
     alert('ZIP 생성에 실패했습니다.');
   } finally {
-    btn.textContent = origText;
-    btn.disabled = false;
+    if (btn) { btn.textContent = restoreText || origText; btn.disabled = false; }
+    updateSelCount();
   }
 }
 
