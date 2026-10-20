@@ -234,6 +234,31 @@ tr:hover td{background:rgba(255,255,255,.02)}
   td.cell-del{grid-column:1 / -1;margin-top:6px}
   td.cell-del .btn-del-row{width:100%;padding:8px}
 }
+/* 골구도 */
+#gg-modal{display:none;position:fixed;inset:0;z-index:300;background:rgba(0,0,0,.75);overflow:auto;padding:16px}
+#gg-modal.open{display:block}
+.gg-box{background:var(--card);border:1px solid var(--border);border-radius:12px;padding:14px;min-width:max-content}
+.gg-head{display:flex;align-items:center;gap:12px;margin-bottom:10px;font-weight:700}
+.gg-head .gg-legend{font-size:11px;color:var(--muted);font-weight:500}
+.gg-head button{margin-left:auto}
+#gg-body{display:flex;gap:10px;align-items:flex-start}
+.gg-dong{flex:none}
+.gg-title{text-align:center;font-weight:800;color:var(--accent);font-size:13px;margin-bottom:4px}
+.gg-title span{margin-left:4px;font-size:10px;background:#4A90D9;color:#fff;border-radius:8px;padding:0 5px}
+.gg-grid{display:grid;gap:2px}
+.gg-core{text-align:center;font-size:9px;font-weight:800;color:#B9A7FF;border-bottom:1px solid #6A5ACD}
+.gg-hd{text-align:center;font-size:9px;font-weight:700;color:var(--accent)}
+.gg-fl{font-size:9px;font-weight:700;color:var(--muted);text-align:right;padding-right:3px;line-height:14px;cursor:pointer;position:relative}
+.gg-fl-has{color:#2ECC71}
+.gg-fl b{font-size:8px;color:#fff;background:#4A90D9;border-radius:6px;padding:0 3px;margin-left:2px}
+.gg-c{height:14px;font-size:8px;line-height:14px;text-align:center;border-radius:3px;background:var(--card2);border:1px solid var(--border);color:var(--muted);cursor:pointer;position:relative;overflow:hidden}
+.gg-c:hover{border-color:var(--accent)}
+.gg-c.gg-has{background:#1A2E1A;border-color:#2ECC71;color:#2ECC71;font-weight:700}
+.gg-c.gg-base{border-color:#3A4060}
+.gg-c.gg-base.gg-has{background:#1A1A2E;border-color:#5C6BC0;color:#AAB0E0}
+.gg-c b{position:absolute;right:0;top:0;bottom:0;background:#4A90D9;color:#fff;font-size:8px;padding:0 2px}
+.gg-empty{visibility:hidden;cursor:default}
+.gg-sep{height:2px;background:#5C6BC0;margin:3px 0}
 </style>
 </head>
 <body>
@@ -282,6 +307,7 @@ tr:hover td{background:rgba(255,255,255,.02)}
       <button class="btn-sm btn-excel" id="btn-zip-selected" style="display:none" onclick="downloadSelectedZip()">🗜️ 선택 ZIP (0)</button>
       <button class="btn-sm btn-upload" id="btn-upload-top" onclick="openUploadModal()">📤 업로드</button>
       <button class="btn-sm" style="background:#3B82F6;color:#fff" onclick="openInspect()">🔍 검측</button>
+      <button class="btn-sm" style="background:#6A5ACD;color:#fff" onclick="openGolgudo()">🏢 골구도</button>
       <button class="btn-sm" style="background:var(--card2);color:var(--muted)" onclick="window.open('https://lulee4132.github.io/punchmanager-releases/사진대지_생성기.html','_blank')" title="사진대지 생성기">🎨 사진대지</button>
       <button class="btn-sm" style="background:var(--card2);color:var(--muted)" onclick="window.open('https://lulee4132.github.io/Text-extraction-labelling-Tool/','_blank')" title="텍스트 추출 도구">📝 사진분류</button>
       <!-- Schedule: 구조 일람표(PDF)→엑셀 추출 도구. Python 백엔드가 필요하므로
@@ -333,6 +359,15 @@ tr:hover td{background:rgba(255,255,255,.02)}
         <div class="loading"><div class="spinner"></div>데이터 불러오는 중...</div>
       </div>
     </div>
+  </div>
+</div>
+
+<!-- 골구도 모달 -->
+<div id="gg-modal" onclick="closeGolgudo(event)">
+  <div class="gg-box">
+    <div class="gg-head">🏢 골구도 현황 <span class="gg-legend">숫자 = 진행중 건수 · 칸을 누르면 해당 위치 목록</span>
+      <button class="btn-sm" style="background:var(--card2);color:var(--muted)" onclick="closeGolgudo()">닫기</button></div>
+    <div id="gg-body"></div>
   </div>
 </div>
 
@@ -1092,8 +1127,9 @@ function renderTable(photos) {
       ${checkCell}
       <td>${thumb}</td>
       <td data-label="위치">${p.dong || '-'} <small style="color:var(--muted)">${p.room || ''}</small></td>
+      <td data-label="부위">${p.bui || '-'}</td>
       <td data-label="공종">${p.gj || '-'}</td>
-      <td data-label="상세">${p.wichi || '-'}</td>
+      <td data-label="세부공종">${p.sebuGj || '-'}</td>
       <td class="cell-content" data-label="내용" style="max-width:200px;white-space:normal">${p.content || '-'}</td>
       <td data-label="상태">${badge}</td>
       <td data-label="일자">${p.date || '-'} <span class="user-tag">· ${p.userName || '-'}</span></td>
@@ -1105,7 +1141,7 @@ function renderTable(photos) {
     <table>
       <thead><tr>
         ${selectMode ? '<th style="text-align:center"><input type="checkbox" onclick="toggleSelectAll(this)" title="전체 선택" style="width:18px;height:18px;accent-color:var(--accent)"></th>' : ''}
-        <th>사진</th><th>위치</th><th>공종</th><th>상세위치</th><th>내용</th><th>상태</th><th>일자/작성자</th>${isAdmin ? '<th></th>' : ''}
+        <th>사진</th><th>위치</th><th>부위</th><th>공종</th><th>세부공종</th><th>내용</th><th>상태</th><th>일자/작성자</th>${isAdmin ? '<th></th>' : ''}
       </tr></thead>
       <tbody>${rows}</tbody>
     </table>
@@ -1135,6 +1171,105 @@ async function ensureFullLoad() {
   setSyncBar(false);
 }
 
+// ── 골구도 (앱 펀치리스트 탭과 동일 구성, 웹은 전체 동을 한 화면에) ──
+// 앱 dong_config.dart 의 기본값/코어 구성과 동일하게 유지할 것.
+const DONG_CFG = {
+  '104동': {min:-2, hos:{1:36,2:35,3:35,4:21}},
+  '105동': {min:-2, hos:{1:32,2:27}},
+  '106동': {min:-2, hos:{1:32,2:24}},
+  '107동': {min:-2, hos:{1:35,2:35,3:35}},
+  '108동': {min:-2, hos:{1:38,2:38,3:38,4:38}},
+  '109동': {min:-2, hos:{1:37,2:37,3:38,4:38}},
+  '114동': {min:-2, hos:{1:36,2:36,3:30,4:36}},
+  '115동': {min:-2, hos:{1:36,2:36,3:35,4:25}},
+};
+const DONG_CORES = {
+  '104동': {1:[1,2],2:[3,4]}, '108동': {1:[1,2],2:[3,4]}, '109동': {1:[1,2],2:[3,4]},
+  '114동': {1:[1,2],2:[3,4]}, '115동': {1:[1,2],2:[3,4]},
+  '105동': {1:[1,2]}, '106동': {1:[1,2]}, '107동': {1:[1,2,3]},
+};
+function coreOfHoNum(dong, n) {
+  const c = DONG_CORES[dong]; if (!c) return null;
+  for (const k in c) if (c[k].includes(n)) return +k;
+  return null;
+}
+// 레코드의 코어: 호실이면 호 번호로, 층(공용부)이면 위치 문자열의 'N코어'로 판별
+function coreOfPhoto(p) {
+  if (!DONG_CORES[p.dong]) return '';
+  const ho = p.ho || '';
+  let m = ho.match(/^\d+?(\d{2})호$/) || ho.match(/^B\d+F (\d+)호$/);
+  if (m) { const c = coreOfHoNum(p.dong, +m[1]); return c ? `${c}코어` : ''; }
+  m = (p.wichi || '').match(/(\d)코어/);
+  return m ? `${m[1]}코어` : '';
+}
+
+function openGolgudo() {
+  const active = basePhotos().filter(p => p.status !== 'done');
+  const cnt = {};
+  active.forEach(p => { const k = `${p.dong}|${p.ho}`; cnt[k] = (cnt[k]||0) + 1; });
+  const dongs = Object.keys(DONG_CFG);
+  const maxF = Math.max(...dongs.map(d => Math.max(...Object.values(DONG_CFG[d].hos))));
+  const minF = Math.min(...dongs.map(d => DONG_CFG[d].min));
+  const flab = f => f >= 1 ? `${f}F` : `B${-f}F`;  // 앱 촬영화면과 동일: -1→B1F
+  const cell = (dong, ho, label, exists, base) => {
+    if (!exists) return `<div class="gg-c gg-empty"></div>`;
+    const n = cnt[`${dong}|${ho}`] || 0;
+    return `<div class="gg-c${n?' gg-has':''}${base?' gg-base':''}" title="${dong} ${ho}${n?` · 진행중 ${n}건`:''}" onclick="golgudoPick('${dong}','${ho}')">${label}${n?`<b>${n}</b>`:''}</div>`;
+  };
+  const html = dongs.map(dong => {
+    const cfg = DONG_CFG[dong];
+    const units = Object.keys(cfg.hos).map(Number).sort((a,b)=>a-b);
+    const cols = `30px repeat(${units.length}, 36px)`;
+    let h = `<div class="gg-dong"><div class="gg-title">${dong}<span>${active.filter(p=>p.dong===dong).length}</span></div>`;
+    h += `<div class="gg-grid" style="grid-template-columns:${cols}">`;
+    if (DONG_CORES[dong]) {
+      h += `<div></div>`;
+      let i = 0;
+      while (i < units.length) {
+        const c = coreOfHoNum(dong, units[i]); let j = i;
+        while (j < units.length && coreOfHoNum(dong, units[j]) === c) j++;
+        h += `<div class="gg-core" style="grid-column:span ${j-i}">${c?`${c}코어`:''}</div>`;
+        i = j;
+      }
+    }
+    h += `<div></div>` + units.map(u => `<div class="gg-hd">${u}호</div>`).join('');
+    for (let f = maxF; f >= minF; f--) {
+      if (f === 0) { h += `<div class="gg-sep" style="grid-column:1/-1"></div>`; continue; }
+      if (f < cfg.min) continue;
+      const base = f < 1;
+      const fl = flab(f);
+      const fn = cnt[`${dong}|${fl}`] || 0;
+      const anyUnit = units.some(u => base || f <= cfg.hos[u]);
+      h += anyUnit
+        ? `<div class="gg-fl${fn?' gg-fl-has':''}" onclick="golgudoPick('${dong}','${fl}')" title="${dong} ${fl} 공용부${fn?` · 진행중 ${fn}건`:''}">${fl}${fn?`<b>${fn}</b>`:''}</div>`
+        : `<div class="gg-fl"></div>`;
+      units.forEach(u => {
+        h += base ? cell(dong, `${fl} ${u}호`, `${u}호`, true, true)
+                  : cell(dong, `${f*100+u}호`, `${f*100+u}`, f <= cfg.hos[u], false);
+      });
+    }
+    return h + `</div></div>`;
+  }).join('');
+  document.getElementById('gg-body').innerHTML = html;
+  document.getElementById('gg-modal').classList.add('open');
+}
+function closeGolgudo(e) {
+  if (!e || e.target === document.getElementById('gg-modal')) document.getElementById('gg-modal').classList.remove('open');
+}
+// 셀 클릭 → 해당 동/호(층) 필터 적용 후 목록으로
+function golgudoPick(dong, ho) {
+  const setSel = (id, v) => {
+    const sel = document.getElementById(id);
+    if (![...sel.options].some(o => o.value === v)) sel.add(new Option(v, v));
+    sel.value = v;
+  };
+  setSel('f-dong', dong);
+  setSel('f-ho', ho);
+  document.getElementById('f-status').value = 'active';
+  closeGolgudo();
+  applyFilter();
+}
+
 // ── 엑셀 내보내기 ──
 async function exportExcel() {
   await ensureFullLoad();
@@ -1143,9 +1278,9 @@ async function exportExcel() {
 function _exportExcelInner() {
   const filtered = basePhotos().filter(photoPassesFilters);
 
-  const data = [['동', '호수', '공간', '부위', '공종', '세부공종', '내용', '상태', '일자', '작성자', '사진URL(BEFORE)', '완료일', '완료자', '완료사진URL(AFTER)']];
+  const data = [['동', '코어', '호수', '공간', '부위', '공종', '세부공종', '내용', '상태', '일자', '작성자', '사진URL(BEFORE)', '완료일', '완료자', '완료사진URL(AFTER)']];
   filtered.forEach(p => data.push([
-    p.dong||'', p.ho||'', p.room||'', p.bui||'', p.gj||'',
+    p.dong||'', coreOfPhoto(p), p.ho||'', p.room||'', p.bui||'', p.gj||'',
     p.sebuGj||'', p.content||'',
     p.status === 'done' ? '완료' : '진행중',
     p.date||'', p.userName||'', p.url||'',
@@ -1154,7 +1289,7 @@ function _exportExcelInner() {
 
   const wb = XLSX.utils.book_new();
   const ws = XLSX.utils.aoa_to_sheet(data);
-  ws['!cols'] = [8,6,8,8,8,12,20,6,10,8,40,10,8,40].map(w=>({wch:w}));
+  ws['!cols'] = [8,6,6,8,8,8,12,20,6,10,8,40,10,8,40].map(w=>({wch:w}));
   XLSX.utils.book_append_sheet(wb, ws, '펀치리스트');
   XLSX.writeFile(wb, `펀치리스트_${currentSiteName}_${new Date().toISOString().slice(0,10)}.xlsx`);
 }
