@@ -1,5 +1,5 @@
 {
-  "version": "2.2.1",
-  "apk_url": "https://github.com/lulee4132/punchmanager-releases/releases/download/v2.2.1/punchmanager_v2.2.1_app-release.apk",
-  "release_notes": "• 하자 필터에 세부공종·부위(천정/벽/바닥) 추가 — 공종 선택 시 세부공종 종속 표시\n• 위치 선택에 동별 코어(1코어/2코어) 구분 추가\n• iOS 최소 지원 버전 15.0 상향"
+  "version": "2.2.2",
+  "apk_url": "https://github.com/lulee4132/punchmanager-releases/releases/download/v2.2.2/punchmanager_v2.2.2_app-release.apk",
+  "release_notes": "• 코어 구분 동에서 층(공용부) 버튼을 코어별로 분리 — 공용부 사진에 1코어/2코어 기록\n• 앱 용량 대폭 감소 (82MB → 약 31MB)\n• 갤러리 사진 크기 최적화로 업로드·동기화 속도 개선"
 }
