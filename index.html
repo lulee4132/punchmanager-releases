@@ -1143,10 +1143,10 @@ async function exportExcel() {
 function _exportExcelInner() {
   const filtered = basePhotos().filter(photoPassesFilters);
 
-  const data = [['동', '호수', '공간', '공종', '상세위치', '내용', '상태', '일자', '작성자', '사진URL(BEFORE)', '완료일', '완료자', '완료사진URL(AFTER)']];
+  const data = [['동', '호수', '공간', '부위', '공종', '세부공종', '내용', '상태', '일자', '작성자', '사진URL(BEFORE)', '완료일', '완료자', '완료사진URL(AFTER)']];
   filtered.forEach(p => data.push([
-    p.dong||'', p.ho||'', p.room||'', p.gj||'',
-    p.wichi||'', p.content||'',
+    p.dong||'', p.ho||'', p.room||'', p.bui||'', p.gj||'',
+    p.sebuGj||'', p.content||'',
     p.status === 'done' ? '완료' : '진행중',
     p.date||'', p.userName||'', p.url||'',
     p.afterDate||'', p.afterUser||'', p.afterUrl||''
@@ -1154,7 +1154,7 @@ function _exportExcelInner() {
 
   const wb = XLSX.utils.book_new();
   const ws = XLSX.utils.aoa_to_sheet(data);
-  ws['!cols'] = [8,6,8,8,15,20,6,10,8,40,10,8,40].map(w=>({wch:w}));
+  ws['!cols'] = [8,6,8,8,8,12,20,6,10,8,40,10,8,40].map(w=>({wch:w}));
   XLSX.utils.book_append_sheet(wb, ws, '펀치리스트');
   XLSX.writeFile(wb, `펀치리스트_${currentSiteName}_${new Date().toISOString().slice(0,10)}.xlsx`);
 }
