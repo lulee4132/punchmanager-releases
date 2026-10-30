@@ -8,6 +8,7 @@
 <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-firestore-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-storage-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-auth-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-functions-compat.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
 <style>
@@ -2399,6 +2400,7 @@ function renderMembers() {
         ? `<div class="mem-label">접근 가능한 공종</div>${_chips(m.uid)}` : '';
       const actions = [];
       if (m.role === 'vendor') actions.push(`<button class="btn-sm" style="background:var(--card2);color:var(--muted);border:1px solid var(--border)" onclick="saveScope('${m.uid}',this)">공종 저장</button>`);
+      if (m.uid !== auth.currentUser?.uid) actions.push(`<button class="btn-sm" style="background:var(--card2);color:var(--muted);border:1px solid var(--border)" onclick="resetMemberPw('${m.uid}','${esc(m.name)}',this)">🔑 비밀번호 재설정</button>`);
       if (canDelete) actions.push(delBtn(m));
       detail = scopeUi + (actions.length ? `<div style="margin-top:10px;display:flex;gap:8px">${actions.join('')}</div>` : '');
     }
@@ -2411,6 +2413,23 @@ function renderMembers() {
     </div>`;
   });
   document.getElementById('member-body').innerHTML = html;
+}
+
+// 관리자: 비밀번호를 잊은 멤버에게 임시 비밀번호 지정 (Cloud Function)
+async function resetMemberPw(uid, name, btn) {
+  const pw = prompt(`${name} 님의 임시 비밀번호를 입력하세요 (6자 이상)`);
+  if (pw === null) return;
+  if (pw.length < 6) { alert('비밀번호는 6자 이상이어야 합니다.'); return; }
+  const label = btn.textContent;
+  btn.disabled = true; btn.textContent = '처리 중...';
+  try {
+    await firebase.app().functions('asia-northeast3').httpsCallable('adminResetPassword')({ siteCode: currentSiteCode, uid, newPassword: pw });
+    alert(`${name} 님의 비밀번호가 재설정되었습니다.\n임시 비밀번호로 로그인 후 🔑 비밀번호 메뉴에서 변경하도록 안내해주세요.`);
+  } catch (e) {
+    alert('재설정 실패: ' + (e.message || e.code));
+  } finally {
+    btn.disabled = false; btn.textContent = label;
+  }
 }
 
 async function approveMember(uid, btn) {
