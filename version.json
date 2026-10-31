@@ -1,5 +1,5 @@
 {
-  "version": "3.0.0",
-  "apk_url": "https://github.com/lulee4132/punchmanager-releases/releases/download/v3.0.0/punchmanager_v3.0.0_app-release.apk",
-  "release_notes": "• 공종 체계 고정: 대공종 → 세부공종 → 세부부위 3단계 선택\n• 공종 추가·편집 기능 제거 (모든 사용자가 동일한 공종 목록 사용)\n• 화이트보드에 세부공종·세부부위까지 표시\n• 펀치 목록 검색에 세부부위 포함"
+  "version": "3.0.1",
+  "apk_url": "https://github.com/lulee4132/punchmanager-releases/releases/download/v3.0.1/punchmanager_v3.0.1_app-release.apk",
+  "release_notes": "• 현장 전환 지원: 다른 현장으로 로그인하면 이전 현장 기록을 먼저 업로드한 뒤 휴대폰에서 정리\n• 업로드되지 않은 기록이 있으면 전환을 막아 기록 유실 방지\n※ 11월 1일 GJ02 현장 전환 전에 꼭 업데이트해주세요"
 }
