@@ -272,7 +272,7 @@ tr:hover td{background:rgba(255,255,255,.02)}
     <div class="login-sub">현장 코드로 로그인해주세요</div>
     <div class="field-wrap">
       <div class="field-label">현장 코드</div>
-      <input class="field-input" id="inp-code" placeholder="6자리 코드 입력" maxlength="6"
+      <input class="field-input" id="inp-code" placeholder="현장 코드 입력" maxlength="6"
         style="text-transform:uppercase;letter-spacing:4px;font-size:20px;font-weight:900;text-align:center">
     </div>
     <div class="field-wrap">
@@ -677,7 +677,7 @@ async function doLogin() {
   const btn = document.getElementById('btn-login');
   document.getElementById('login-error').style.display = 'none';
 
-  if (!code || code.length !== 6) { showErr('현장 코드 6자리를 입력해주세요'); return; }
+  if (!code || code.length < 4 || code.length > 6) { showErr('현장 코드를 입력해주세요 (4~6자리)'); return; }
   if (!name) { showErr('이름을 입력해주세요'); return; }
   if (!pw || pw.length < 6) { showErr('비밀번호는 6자 이상 입력해주세요'); return; }
 
