@@ -1,5 +1,5 @@
 {
-  "version": "2.2.2",
-  "apk_url": "https://github.com/lulee4132/punchmanager-releases/releases/download/v2.2.2/punchmanager_v2.2.2_app-release.apk",
-  "release_notes": "• 코어 구분 동에서 층(공용부) 버튼을 코어별로 분리 — 공용부 사진에 1코어/2코어 기록\n• 앱 용량 대폭 감소 (82MB → 약 31MB)\n• 갤러리 사진 크기 최적화로 업로드·동기화 속도 개선"
+  "version": "3.0.0",
+  "apk_url": "https://github.com/lulee4132/punchmanager-releases/releases/download/v3.0.0/punchmanager_v3.0.0_app-release.apk",
+  "release_notes": "• 공종 체계 고정: 대공종 → 세부공종 → 세부부위 3단계 선택\n• 공종 추가·편집 기능 제거 (모든 사용자가 동일한 공종 목록 사용)\n• 화이트보드에 세부공종·세부부위까지 표시\n• 펀치 목록 검색에 세부부위 포함"
 }
