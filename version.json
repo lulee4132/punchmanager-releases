@@ -1,5 +1,1 @@
-{
-  "version": "3.0.1",
-  "apk_url": "https://github.com/lulee4132/punchmanager-releases/releases/download/v3.0.1/punchmanager_v3.0.1_app-release.apk",
-  "release_notes": "• 현장 전환 지원: 다른 현장으로 로그인하면 이전 현장 기록을 먼저 업로드한 뒤 휴대폰에서 정리\n• 업로드되지 않은 기록이 있으면 전환을 막아 기록 유실 방지\n※ 11월 1일 GJ02 현장 전환 전에 꼭 업데이트해주세요"
-}
+{"version": "3.0.2", "apk_url": "https://github.com/lulee4132/punchmanager-releases/releases/download/v3.0.2/punchmanager_v3.0.2_app-release.apk", "release_notes": "공종 목록 가나다순 정렬, 현장 코드 안내 문구 수정"}
