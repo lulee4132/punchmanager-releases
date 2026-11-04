@@ -2586,11 +2586,22 @@ window.onload = () => {
 .bf-hero .bf-stats b{display:block;font-size:22px;font-weight:700;opacity:1}
 .bf-trades{grid-column:span 5}
 .bf-kw{grid-column:span 4;padding:18px 18px 12px}
-.bf-gg{grid-column:span 9;background:#1A1D27;padding:18px 20px}
+.bf-gg{grid-column:span 7;background:#1A1D27;padding:18px 20px}
 .bf-gg h2{color:#E8E2D0}
 .bf-gg h2 .bf-sub{color:#7A80A0}
 .bf-gg-wrap{flex:1;min-height:0;position:relative;overflow:hidden;margin-top:10px}
 .bf-gg-wrap #bf-gg-body{display:flex;gap:10px;align-items:flex-start;transform-origin:top left;position:absolute;left:0;top:0}
+.bf-wf{grid-column:span 2;padding:18px 16px}
+.bf-wf .bf-wf-total{font-size:34px;font-weight:900;color:#2B3245;line-height:1.1;margin-top:6px}
+.bf-wf .bf-wf-total small{font-size:15px;font-weight:700;margin-left:2px}
+.bf-wf .bf-wf-note{font-size:11px;color:#9AA3B8;margin-top:2px}
+.bf-wf-list{flex:1;min-height:0;overflow:auto;margin-top:10px;font-size:11.5px}
+.bf-wf-row{display:grid;grid-template-columns:1fr auto;gap:1px 6px;align-items:center;padding:2px 0;border-bottom:1px solid #EEF0F5}
+.bf-wf-row span{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:#4B5A78}
+.bf-wf-row b{font-variant-numeric:tabular-nums;color:#2B3245}
+.bf-wf-row .bf-wf-bar{grid-column:1/-1;height:3px;border-radius:2px;background:linear-gradient(90deg,#FDBA4D,#F57B3A)}
+.bf-wf-row.bf-na b{color:#B0B7C8;font-weight:500}
+.bf-wf-row .bf-warn{color:#E8692A;margin-left:3px}
 .bf-side{grid-column:span 3;display:grid;grid-template-rows:1fr 1fr;gap:20px;min-height:0}
 .bf-chart{flex:1;min-height:0;position:relative;margin-top:8px}
 .bf-chart svg{position:absolute;inset:0;width:100%;height:100%;overflow:visible}
@@ -2640,6 +2651,13 @@ window.onload = () => {
     <section class="bf-card bf-gg">
       <h2>골구도<span class="bf-sub">숫자 = 진행중 건수 · 칸을 누르면 해당 위치 목록</span></h2>
       <div class="bf-gg-wrap" id="bf-gg-wrap"><div id="bf-gg-body"></div></div>
+    </section>
+
+    <section class="bf-card bf-wf">
+      <h2>오늘 출력 인원</h2>
+      <div class="bf-wf-total" id="bf-wf-total">—</div>
+      <div class="bf-wf-note" id="bf-wf-note">작업계획 문서를 불러오는 중</div>
+      <div class="bf-wf-list" id="bf-wf-list"></div>
     </section>
 
     <div class="bf-side">
@@ -2724,6 +2742,7 @@ function renderBrief(photos) {
   bfKeywords(photos, gjMap);
   bfDonut(done, open.length, rate);
   bfDaily(photos);
+  bfWorkforce();
   // 골구도: 웹 골구도와 동일한 렌더러/클릭 동작
   const body = document.getElementById('bf-gg-body');
   body.innerHTML = buildGolgudoHtml(open);
@@ -2833,6 +2852,30 @@ function bfKeywords(photos, gjMap) {
     }
   });
   box.replaceChildren(svg);
+}
+
+// 오늘 출력 인원 (Drive 'DABs_작업계획' 문서 → getWorkforce, 관리자 전용)
+async function bfWorkforce() {
+  const tot = document.getElementById('bf-wf-total'), note = document.getElementById('bf-wf-note'), list = document.getElementById('bf-wf-list');
+  tot.textContent = '—'; note.textContent = '작업계획 문서를 불러오는 중'; list.replaceChildren();
+  let r;
+  try { r = (await firebase.app().functions('asia-northeast3').httpsCallable('getWorkforce')({ siteCode: currentSiteCode })).data; }
+  catch (e) { note.textContent = e.message || '인원 정보를 불러오지 못했습니다.'; return; }
+  if (!r.found) { note.textContent = '작업계획 문서가 없습니다.'; return; }
+  tot.innerHTML = `${r.total.toLocaleString()}<small>명</small>`;
+  const stale = r.docDate !== r.date ? ` · ⚠ ${r.docDate.slice(5).replace('-', '/')} 문서` : '';
+  note.textContent = `${r.reported}개 업체 합계${r.unknown ? ` · 미기재 ${r.unknown}곳` : ''}${stale}`;
+  note.title = r.docName;
+  const max = Math.max(1, ...r.companies.map(c => c.count || 0));
+  list.replaceChildren(...r.companies.map(c => {
+    const row = bfEl('div', { class: 'bf-wf-row' + (c.count == null ? ' bf-na' : ''), title: `${c.name} · 원문: ${c.raw}${c.equip && c.equip !== '미기재' ? ' · 장비: ' + c.equip : ''}` });
+    row.append(bfEl('span', {}, c.name));
+    const b = bfEl('b', {}, c.count == null ? '미기재' : c.count + '명');
+    if (c.mismatch) b.append(bfEl('span', { class: 'bf-warn', title: `세부 합 ${c.detail}명` }, '⚠'));
+    row.append(b);
+    if (c.count) { const bar = bfEl('div', { class: 'bf-wf-bar' }); bar.style.width = (100 * c.count / max) + '%'; row.append(bar); }
+    return row;
+  }));
 }
 
 // 처리율 도넛
