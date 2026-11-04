@@ -315,6 +315,7 @@ tr:hover td{background:rgba(255,255,255,.02)}
       <!-- Schedule: 구조 일람표(PDF)→엑셀 추출 도구. Python 백엔드가 필요하므로
            호스팅 후 아래 SCHEDULE_URL 값을 실제 주소로 교체하세요. -->
       <button class="btn-sm" style="background:var(--card2);color:var(--muted)" onclick="window.open(SCHEDULE_URL,'_blank')" title="구조 일람표 추출 (PDF→엑셀)">📐 Schedule</button>
+      <button class="btn-sm" id="btn-brief" style="display:none;background:linear-gradient(90deg,#8B5CF6,#3B9CF6);color:#fff" onclick="openBrief()">📊 브리프</button>
       <button class="btn-sm" id="btn-members" style="display:none;background:#8B5CF6;color:#fff" onclick="openMembers()">👥 멤버</button>
       <button class="btn-sm" style="background:var(--card2);color:var(--muted)" onclick="openPwModal()">🔑 비밀번호</button>
       <button class="btn-sm btn-logout" onclick="doLogout()">로그아웃</button>
@@ -789,6 +790,7 @@ function showMain() {
   document.getElementById('tb-code').textContent = currentSiteCode;
   if (isAdmin) document.getElementById('btn-delete-all').style.display = 'block';
   document.getElementById('btn-members').style.display = isAdmin ? '' : 'none';
+  document.getElementById('btn-brief').style.display = isAdmin ? '' : 'none';
   // 업체는 원본 업로드 불가 (열람 전용)
   document.getElementById('btn-upload-top').style.display = currentRole === 'vendor' ? 'none' : '';
   loadPhotos();
@@ -1206,7 +1208,11 @@ function coreOfPhoto(p) {
 }
 
 function openGolgudo() {
-  const active = basePhotos().filter(p => p.status !== 'done');
+  document.getElementById('gg-body').innerHTML = buildGolgudoHtml(basePhotos().filter(p => p.status !== 'done'));
+  document.getElementById('gg-modal').classList.add('open');
+}
+// 골구도 HTML (골구도 모달·관리자 브리프 공용)
+function buildGolgudoHtml(active) {
   const cnt = {};
   active.forEach(p => { const k = `${p.dong}|${p.ho}`; cnt[k] = (cnt[k]||0) + 1; });
   const dongs = Object.keys(DONG_CFG);
@@ -1252,8 +1258,7 @@ function openGolgudo() {
     }
     return h + `</div></div>`;
   }).join('');
-  document.getElementById('gg-body').innerHTML = html;
-  document.getElementById('gg-modal').classList.add('open');
+  return html;
 }
 function closeGolgudo(e) {
   if (!e || e.target === document.getElementById('gg-modal')) document.getElementById('gg-modal').classList.remove('open');
@@ -1265,6 +1270,7 @@ function golgudoPick(dong, ho) {
     if (![...sel.options].some(o => o.value === v)) sel.add(new Option(v, v));
     sel.value = v;
   };
+  closeBrief();
   setSel('f-dong', dong);
   setSel('f-ho', ho);
   document.getElementById('f-status').value = 'active';
@@ -2549,5 +2555,339 @@ window.onload = () => {
   }
 };
 </script>
+<!-- ══════════ 관리자 모닝 브리프 (A3 가로 한 장) ══════════ -->
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Black+Han+Sans&family=Noto+Sans+KR:wght@400;500;700;900&display=swap">
+<style>
+#brief-modal{display:none;position:fixed;inset:0;z-index:400;background:rgba(10,12,20,.82);overflow:auto}
+#brief-modal.open{display:block}
+.bf-toolbar{position:sticky;top:0;z-index:2;display:flex;gap:8px;justify-content:flex-end;padding:10px 16px}
+.bf-stage{display:flex;justify-content:center;padding:0 16px 24px}
+.bf-scale{transform-origin:top left}
+.bf-sheet{width:1587px;height:1123px;padding:28px;background:linear-gradient(115deg,#8B5CF6 0%,#6E7CF4 50%,#4F9CF6 100%);font-family:'Noto Sans KR',-apple-system,sans-serif;color:#2B3245}
+.bf-inner{width:100%;height:100%;background:#E9EAEF;border-radius:6px;padding:26px 30px;display:grid;grid-template-columns:repeat(12,1fr);grid-template-rows:auto 372px 1fr;gap:20px}
+.bf-head{grid-column:1/-1;display:flex;align-items:flex-end;justify-content:space-between}
+.bf-head h1{font-size:30px;font-weight:900;color:#2B3245;letter-spacing:-.5px}
+.bf-head h1 small{font-size:15px;font-weight:500;color:#6B7590;margin-left:12px;letter-spacing:0}
+.bf-head .bf-meta{font-size:13px;color:#6B7590;text-align:right;line-height:1.5}
+.bf-card{background:#fff;border-radius:18px;padding:22px 26px;min-width:0;min-height:0;box-shadow:0 2px 10px rgba(60,70,120,.06);display:flex;flex-direction:column}
+.bf-card h2{font-size:17px;font-weight:700;color:#4B5A78;display:flex;align-items:center;gap:16px}
+.bf-card h2 .bf-sub{font-size:12px;font-weight:500;color:#9AA3B8}
+.bf-legend{display:flex;gap:18px;font-size:13px;color:#8C96AE;margin-left:auto;font-weight:500}
+.bf-legend i{display:inline-block;width:9px;height:9px;border-radius:50%;margin-right:6px;vertical-align:1px}
+.bf-hero{grid-column:span 3;background:linear-gradient(140deg,#8B5CF6,#4F9CF6);color:#fff;position:relative;overflow:hidden}
+.bf-hero::before,.bf-hero::after{content:"";position:absolute;border-radius:50%;background:rgba(255,255,255,.09)}
+.bf-hero::before{width:380px;height:380px;right:-150px;bottom:-170px}
+.bf-hero::after{width:260px;height:260px;left:-60px;bottom:-190px}
+.bf-hero .bf-big{font-size:68px;font-weight:900;line-height:1;margin-top:6px;letter-spacing:-1px}
+.bf-hero .bf-big small{font-size:26px;font-weight:700;margin-left:4px}
+.bf-hero .bf-cap{font-size:19px;opacity:.75;margin-top:6px}
+.bf-hero .bf-stats{position:relative;z-index:1;margin-top:auto;display:grid;grid-template-columns:1fr 1fr;gap:12px 14px}
+.bf-hero .bf-stats div{font-size:12px;opacity:.85}
+.bf-hero .bf-stats b{display:block;font-size:22px;font-weight:700;opacity:1}
+.bf-trades{grid-column:span 5}
+.bf-kw{grid-column:span 4;padding:18px 18px 12px}
+.bf-gg{grid-column:span 9;background:#1A1D27;padding:18px 20px}
+.bf-gg h2{color:#E8E2D0}
+.bf-gg h2 .bf-sub{color:#7A80A0}
+.bf-gg-wrap{flex:1;min-height:0;position:relative;overflow:hidden;margin-top:10px}
+.bf-gg-wrap #bf-gg-body{display:flex;gap:10px;align-items:flex-start;transform-origin:top left;position:absolute;left:0;top:0}
+.bf-side{grid-column:span 3;display:grid;grid-template-rows:1fr 1fr;gap:20px;min-height:0}
+.bf-chart{flex:1;min-height:0;position:relative;margin-top:8px}
+.bf-chart svg{position:absolute;inset:0;width:100%;height:100%;overflow:visible}
+.bf-chart text{font-family:'Noto Sans KR',sans-serif}
+.bf-donut-wrap{flex:1;display:flex;align-items:center;justify-content:center;min-height:0;position:relative}
+.bf-tip{position:absolute;pointer-events:none;background:#fff;border:1px solid #E1E4EC;border-radius:8px;padding:6px 10px;font-size:12px;box-shadow:0 4px 14px rgba(0,0,0,.12);white-space:nowrap;display:none;z-index:3;color:#2B3245}
+@media print{
+  @page{size:A3 landscape;margin:0}
+  body>*:not(#brief-modal){display:none!important}
+  #brief-modal{position:static;background:none;display:block!important;overflow:visible}
+  .bf-toolbar{display:none}
+  .bf-stage{padding:0}
+  .bf-scale{transform:none!important;width:auto!important;height:auto!important}
+  .bf-sheet{-webkit-print-color-adjust:exact;print-color-adjust:exact}
+}
+</style>
+
+<div id="brief-modal">
+  <div class="bf-toolbar">
+    <button class="btn-sm" style="background:#fff;color:#4B5A78" onclick="window.print()">🖨️ A3 인쇄 / PDF</button>
+    <button class="btn-sm" style="background:var(--card2);color:var(--muted)" onclick="closeBrief()">닫기</button>
+  </div>
+  <div class="bf-stage"><div class="bf-scale" id="bf-scale"><div class="bf-sheet"><div class="bf-inner">
+    <header class="bf-head">
+      <h1 id="bf-title">펀치 모닝 브리프<small id="bf-date"></small></h1>
+      <div class="bf-meta" id="bf-meta"></div>
+    </header>
+
+    <section class="bf-card bf-hero">
+      <h2 style="color:#fff">전체 현황</h2>
+      <div class="bf-big" id="bf-open">0<small>건</small></div>
+      <div class="bf-cap">현재 미처리 펀치</div>
+      <div class="bf-stats" id="bf-stats"></div>
+    </section>
+
+    <section class="bf-card bf-trades">
+      <h2>공종별 현황<span class="bf-sub">미처리 많은 순 · 막대 위 숫자 = 처리율</span>
+        <span class="bf-legend"><span><i style="background:#F7963A"></i>미처리</span><span><i style="background:#6E7CF4"></i>종결</span></span></h2>
+      <div class="bf-chart" id="bf-trades"></div>
+    </section>
+
+    <section class="bf-card bf-kw">
+      <h2>키워드 맵<span class="bf-sub">반복될수록 · 건수 많은 공종일수록 크게</span></h2>
+      <div class="bf-chart" id="bf-kw"></div>
+    </section>
+
+    <section class="bf-card bf-gg">
+      <h2>골구도<span class="bf-sub">숫자 = 진행중 건수 · 칸을 누르면 해당 위치 목록</span></h2>
+      <div class="bf-gg-wrap" id="bf-gg-wrap"><div id="bf-gg-body"></div></div>
+    </section>
+
+    <div class="bf-side">
+      <section class="bf-card">
+        <h2>처리율</h2>
+        <div class="bf-donut-wrap" id="bf-donut"></div>
+        <div class="bf-legend" style="margin:0 auto"><span><i style="background:#F7963A"></i>미처리</span><span><i style="background:#6E7CF4"></i>종결</span></div>
+      </section>
+      <section class="bf-card">
+        <h2>일별 추이<span class="bf-sub">최근 14일</span></h2>
+        <div class="bf-legend" style="margin:6px 0 0"><span><i style="background:#F7963A"></i>신규</span><span><i style="background:#6E7CF4"></i>종결</span></div>
+        <div class="bf-chart" id="bf-daily"></div>
+      </section>
+    </div>
+  </div></div></div></div>
+</div>
+
+<script>
+// ── 관리자 모닝 브리프 ──
+const BF_W = 1587, BF_H = 1123;
+const BF_ORANGE = '#F7963A', BF_BLUE = '#6E7CF4';
+function bfDay(s) { // '2026.11.02' | '2026-11-02' → '2026-11-02'
+  const m = String(s || '').match(/(\d{4})\D(\d{1,2})\D(\d{1,2})/);
+  return m ? `${m[1]}-${m[2].padStart(2,'0')}-${m[3].padStart(2,'0')}` : '';
+}
+function bfKst(off = 0) { return new Date(Date.now() + 9*3600e3 - off*864e5).toISOString().slice(0,10); }
+function bfEl(tag, attrs = {}, text) {
+  const svgTags = ['svg','g','path','rect','circle','text','line','defs','linearGradient','stop'];
+  const e = svgTags.includes(tag) ? document.createElementNS('http://www.w3.org/2000/svg', tag) : document.createElement(tag);
+  for (const k in attrs) e.setAttribute(k, attrs[k]);
+  if (text != null) e.textContent = text;
+  return e;
+}
+function bfGrad(defs, id, c1, c2, vertical = true) {
+  const g = bfEl('linearGradient', { id, x1: 0, y1: 0, x2: vertical ? 0 : 1, y2: vertical ? 1 : 0 });
+  g.append(bfEl('stop', { offset: '0%', 'stop-color': c1 }), bfEl('stop', { offset: '100%', 'stop-color': c2 }));
+  defs.append(g);
+}
+
+async function openBrief() {
+  if (!isAdmin) return;
+  await ensureFullLoad();
+  document.getElementById('brief-modal').classList.add('open');
+  renderBrief(basePhotos());
+  window.addEventListener('resize', fitBrief);
+}
+function closeBrief() {
+  document.getElementById('brief-modal').classList.remove('open');
+  window.removeEventListener('resize', fitBrief);
+}
+function fitBrief() {
+  const s = Math.min(1, (window.innerWidth - 32) / BF_W);
+  const el = document.getElementById('bf-scale');
+  el.style.transform = `scale(${s})`;
+  el.style.width = BF_W * s + 'px'; el.style.height = BF_H * s + 'px';
+}
+
+function renderBrief(photos) {
+  fitBrief();
+  const today = bfKst(0), yest = bfKst(1);
+  const open = photos.filter(p => p.status !== 'done');
+  const done = photos.length - open.length;
+  const newT = photos.filter(p => bfDay(p.date) === today).length;
+  const newY = photos.filter(p => bfDay(p.date) === yest).length;
+  const closedT = photos.filter(p => p.status === 'done' && bfDay(p.afterDate) === today).length;
+  const rate = photos.length ? done / photos.length : 0;
+
+  // 공종 집계
+  const gjMap = {};
+  photos.forEach(p => { const g = p.gj || '미분류'; (gjMap[g] ||= { gj: g, open: 0, done: 0, today: 0 }); p.status === 'done' ? gjMap[g].done++ : gjMap[g].open++; if (bfDay(p.date) === today) gjMap[g].today++; });
+  const gjs = Object.values(gjMap).sort((a, b) => b.open - a.open || b.done - a.done);
+
+  document.getElementById('bf-title').firstChild.textContent = `${currentSiteName || ''} 펀치 모닝 브리프`;
+  document.getElementById('bf-date').textContent = `${today.replace(/-/g, '.')} 기준`;
+  document.getElementById('bf-meta').innerHTML = `현장 코드 ${escapeHtml(currentSiteCode || '')}<br>열람 ${escapeHtml(currentUserName || '')} (관리자)`;
+  document.getElementById('bf-open').firstChild.textContent = open.length.toLocaleString();
+  const stats = [['전체 펀치', photos.length], ['처리율', (rate * 100).toFixed(1) + '%'], ['오늘 신규', '+' + newT], ['어제 신규', '+' + newY],
+    ['오늘 종결', closedT], ['최다 공종', gjs[0] ? `${gjs[0].gj} ${gjs[0].open}` : '-']];
+  document.getElementById('bf-stats').replaceChildren(...stats.map(([k, v]) => { const d = bfEl('div', {}, k); d.append(bfEl('b', {}, typeof v === 'number' ? v.toLocaleString() : v)); return d; }));
+
+  bfTrades(gjs.slice(0, 12));
+  bfKeywords(photos, gjMap);
+  bfDonut(done, open.length, rate);
+  bfDaily(photos);
+  // 골구도: 웹 골구도와 동일한 렌더러/클릭 동작
+  const body = document.getElementById('bf-gg-body');
+  body.innerHTML = buildGolgudoHtml(open);
+  requestAnimationFrame(() => {
+    const wrap = document.getElementById('bf-gg-wrap');
+    body.style.transform = 'none';
+    const s = Math.min(wrap.clientWidth / body.scrollWidth, wrap.clientHeight / body.scrollHeight);
+    body.style.transform = `scale(${s})`;
+    body.style.left = Math.max(0, (wrap.clientWidth - body.scrollWidth * s) / 2) + 'px';
+  });
+}
+
+// 공종별: 캡슐형 세로 막대 (미처리 위 / 종결 아래로 이어 붙임)
+function bfTrades(rows) {
+  const box = document.getElementById('bf-trades');
+  const W = box.clientWidth, H = box.clientHeight, m = { t: 22, r: 4, b: 40, l: 34 };
+  const max = Math.max(1, ...rows.map(r => r.open + r.done));
+  const step = Math.ceil(max / 4 / 5) * 5 || 1, top = step * 4;
+  const y = v => H - m.b - (H - m.t - m.b) * v / top;
+  const svg = bfEl('svg', { viewBox: `0 0 ${W} ${H}` });
+  const defs = bfEl('defs'); bfGrad(defs, 'bfO', '#FDBA4D', '#F57B3A'); bfGrad(defs, 'bfB', '#5AA2F7', '#8B5CF6'); svg.append(defs);
+  for (let v = 0; v <= top; v += step) {
+    svg.append(bfEl('line', { x1: m.l, x2: W - m.r, y1: y(v), y2: y(v), stroke: '#E3E6EE' }));
+    svg.append(bfEl('text', { x: m.l - 8, y: y(v) + 4, 'text-anchor': 'end', 'font-size': 11, fill: '#9AA3B8' }, v));
+  }
+  const bw = (W - m.l - m.r) / rows.length, cap = Math.min(16, bw * .42);
+  const tip = bfTip(box);
+  rows.forEach((r, i) => {
+    const cx = m.l + bw * i + bw / 2, x = cx - cap / 2;
+    const g = bfEl('g', { style: 'cursor:pointer' });
+    const total = r.open + r.done;
+    if (r.done) g.append(bfEl('rect', { x, width: cap, y: y(r.done), height: y(0) - y(r.done), rx: cap / 2, fill: 'url(#bfB)' }));
+    if (r.open) g.append(bfEl('rect', { x, width: cap, y: y(total), height: y(r.done) - y(total) + (r.done ? cap / 2 : 0), rx: cap / 2, fill: 'url(#bfO)' }));
+    g.append(bfEl('text', { x: cx, y: y(total) - 7, 'text-anchor': 'middle', 'font-size': 11, 'font-weight': 700, fill: '#4B5A78' }, r.open));
+    const lab = r.gj.replace(/\(.*\)/, '').slice(0, 4);
+    g.append(bfEl('text', { x: cx, y: H - m.b + 18, 'text-anchor': 'middle', 'font-size': 11.5, fill: '#5B6680' }, lab));
+    g.append(bfEl('text', { x: cx, y: H - m.b + 33, 'text-anchor': 'middle', 'font-size': 10, fill: r.today ? '#E8692A' : '#B0B7C8' }, r.today ? `+${r.today}` : `${Math.round(100 * r.done / total)}%`));
+    g.addEventListener('mousemove', e => tip(e, `<b>${escapeHtml(r.gj)}</b><br>미처리 ${r.open} · 종결 ${r.done} · 처리율 ${(100 * r.done / total).toFixed(1)}%<br>오늘 신규 ${r.today}`));
+    g.addEventListener('mouseleave', () => tip());
+    g.addEventListener('click', () => { closeBrief(); const s = document.getElementById('f-gj'); if (s) { if (![...s.options].some(o => o.value === r.gj)) s.add(new Option(r.gj, r.gj)); s.value = r.gj; document.getElementById('f-status').value = 'active'; applyFilter(); } });
+    svg.append(g);
+  });
+  box.replaceChildren(svg);
+}
+function bfTip(box) {
+  let t = box.parentElement.querySelector('.bf-tip');
+  if (!t) { t = bfEl('div', { class: 'bf-tip' }); box.parentElement.style.position = 'relative'; box.parentElement.append(t); }
+  return (e, html) => {
+    if (!e) { t.style.display = 'none'; return; }
+    const r = box.parentElement.getBoundingClientRect(), s = r.width / box.parentElement.offsetWidth;
+    t.innerHTML = html; t.style.display = 'block';
+    let x = (e.clientX - r.left) / s + 12; const yy = (e.clientY - r.top) / s + 12;
+    if (x + t.offsetWidth > box.parentElement.offsetWidth) x -= t.offsetWidth + 24;
+    t.style.left = x + 'px'; t.style.top = yy + 'px';
+  };
+}
+
+// 키워드 맵: 워드클라우드 (나선 배치, 가로/세로 혼합)
+const BF_STOP = new Set(['및','등','부분','부위','필요','요망','바람','확인','처리','조치','있음','요청','하자','상태','관련','전체','일부','현장']);
+const BF_INK = ['#B08A3E','#6B2A1C','#8E3B26','#2F4A3A','#4E3A28','#9C8B3C','#7A2E2E','#3C5A4A'];
+function bfKeywords(photos, gjMap) {
+  const box = document.getElementById('bf-kw');
+  const W = box.clientWidth, H = box.clientHeight;
+  const strip = w => w.replace(/[^\p{L}\p{N}]/gu, '').replace(/(은|는|이|가|을|를|에|의|로|으로|에서|됨|함|요)$/u, '');
+  const kw = {};
+  photos.filter(p => p.status !== 'done').forEach(p => {
+    const words = new Set(String(p.content || '').split(/[\s,./()·~\-]+/).map(strip).filter(w => w.length >= 2 && !BF_STOP.has(w)));
+    if (p.sebuGj) words.add(p.sebuGj.replace(/\s/g, ''));
+    words.forEach(w => { (kw[w] ||= { n: 0, gj: {} }); kw[w].n++; const g = p.gj || '미분류'; kw[w].gj[g] = (kw[w].gj[g] || 0) + 1; });
+  });
+  const gjRank = Object.values(gjMap).sort((a, b) => b.open - a.open).map(g => g.gj);
+  const list = Object.entries(kw).map(([word, v]) => {
+    const top = Object.entries(v.gj).sort((a, b) => b[1] - a[1])[0][0];
+    const gs = gjMap[top] ? gjMap[top].open : 1;
+    return { word, n: v.n, top, score: v.n * Math.log2(2 + gs) };
+  }).sort((a, b) => b.score - a.score).slice(0, 110);
+  const svg = bfEl('svg', { viewBox: `0 0 ${W} ${H}` });
+  if (!list.length) { box.replaceChildren(svg); return; }
+  const smax = list[0].score, smin = list[list.length - 1].score;
+  const size = s => 11 + 61 * Math.pow((s - smin) / Math.max(1e-9, smax - smin), .75);
+  const ctx = document.createElement('canvas').getContext('2d');
+  const placed = [];
+  const hit = (a) => a.x < 0 || a.y < 0 || a.x + a.w > W || a.y + a.h > H || placed.some(b => a.x < b.x + b.w && a.x + a.w > b.x && a.y < b.y + b.h && a.y + a.h > b.y);
+  const tip = bfTip(box);
+  list.forEach((k, i) => {
+    const fs = size(k.score);
+    ctx.font = `${fs}px 'Black Han Sans', 'Noto Sans KR', sans-serif`;
+    const tw = ctx.measureText(k.word).width, th = fs * .92;
+    const vertical = i > 0 && (i % 3 === 1) && k.word.length <= 6;
+    const w = (vertical ? th : tw) + 3, h = (vertical ? tw : th) + 3;
+    for (let t = 0; t < 2200; t += 1) {
+      const a = t * .11, r = 1.6 * a;
+      const cx = W / 2 + r * Math.cos(a) * 1.55, cy = H / 2 + r * Math.sin(a);
+      const rect = { x: cx - w / 2, y: cy - h / 2, w, h };
+      if (hit(rect)) continue;
+      placed.push(rect);
+      const color = BF_INK[Math.max(0, gjRank.indexOf(k.top)) % BF_INK.length];
+      const txt = bfEl('text', {
+        x: cx, y: cy, 'text-anchor': 'middle', 'dominant-baseline': 'central', 'font-size': fs.toFixed(1), fill: color,
+        style: `font-family:'Black Han Sans','Noto Sans KR',sans-serif;cursor:default`,
+        transform: vertical ? `rotate(-90 ${cx} ${cy})` : '',
+      }, k.word);
+      txt.addEventListener('mousemove', e => tip(e, `<b>${escapeHtml(k.word)}</b> · ${k.n}건<br>주 공종 ${escapeHtml(k.top)}`));
+      txt.addEventListener('mouseleave', () => tip());
+      svg.append(txt);
+      break;
+    }
+  });
+  box.replaceChildren(svg);
+}
+
+// 처리율 도넛
+function bfDonut(done, open, rate) {
+  const box = document.getElementById('bf-donut');
+  const S = Math.min(box.clientWidth, box.clientHeight) - 4, R = S / 2 - 12, c = S / 2, L = 2 * Math.PI * R;
+  const svg = bfEl('svg', { width: S, height: S, viewBox: `0 0 ${S} ${S}`, style: 'position:static' });
+  const defs = bfEl('defs'); bfGrad(defs, 'bfD', '#5AA2F7', '#8B5CF6', false); bfGrad(defs, 'bfDO', '#FDBA4D', '#F57B3A', false); svg.append(defs);
+  svg.append(bfEl('circle', { cx: c, cy: c, r: R, fill: 'none', stroke: '#DDE2EA', 'stroke-width': 16 }));
+  const total = done + open || 1;
+  const arc = (frac, off, stroke) => bfEl('circle', { cx: c, cy: c, r: R, fill: 'none', stroke, 'stroke-width': 16, 'stroke-linecap': 'round',
+    'stroke-dasharray': `${Math.max(0, L * frac - 10)} ${L}`, 'stroke-dashoffset': -L * off, transform: `rotate(-90 ${c} ${c})` });
+  if (open) svg.append(arc(open / total, done / total, 'url(#bfDO)'));
+  if (done) svg.append(arc(done / total, 0, 'url(#bfD)'));
+  svg.append(bfEl('text', { x: c, y: c - 4, 'text-anchor': 'middle', 'font-size': S * .2, 'font-weight': 700, fill: '#5B6680' }, (rate * 100).toFixed(rate < .1 ? 1 : 0) + '%'));
+  svg.append(bfEl('text', { x: c, y: c + S * .13, 'text-anchor': 'middle', 'font-size': 12, fill: '#9AA3B8' }, `종결 ${done.toLocaleString()} / 전체 ${total.toLocaleString()}`));
+  box.replaceChildren(svg);
+}
+
+// 일별 추이: 부드러운 영역 차트 (신규 vs 종결)
+function bfDaily(photos) {
+  const box = document.getElementById('bf-daily');
+  const W = box.clientWidth, H = box.clientHeight, m = { t: 14, r: 8, b: 22, l: 28 };
+  const days = Array.from({ length: 14 }, (_, i) => bfKst(13 - i));
+  const nNew = days.map(d => photos.filter(p => bfDay(p.date) === d).length);
+  const nDone = days.map(d => photos.filter(p => p.status === 'done' && bfDay(p.afterDate) === d).length);
+  const max = Math.max(4, ...nNew, ...nDone), step = Math.ceil(max / 3), top = step * 3;
+  const x = i => m.l + (W - m.l - m.r) * i / (days.length - 1), y = v => H - m.b - (H - m.t - m.b) * v / top;
+  const svg = bfEl('svg', { viewBox: `0 0 ${W} ${H}` });
+  const defs = bfEl('defs'); bfGrad(defs, 'bfAO', 'rgba(253,186,77,.95)', 'rgba(245,123,58,.55)'); bfGrad(defs, 'bfAB', 'rgba(90,162,247,.9)', 'rgba(139,92,246,.45)'); svg.append(defs);
+  for (let v = 0; v <= top; v += step) {
+    svg.append(bfEl('line', { x1: m.l, x2: W - m.r, y1: y(v), y2: y(v), stroke: '#E3E6EE' }));
+    svg.append(bfEl('text', { x: m.l - 6, y: y(v) + 4, 'text-anchor': 'end', 'font-size': 10, fill: '#9AA3B8' }, v));
+  }
+  const smooth = vals => { // monotone-ish cubic
+    const pts = vals.map((v, i) => [x(i), y(v)]);
+    let d = `M${pts[0][0]},${pts[0][1]}`;
+    for (let i = 0; i < pts.length - 1; i++) { const [x0, y0] = pts[i], [x1, y1] = pts[i + 1], mx = (x0 + x1) / 2; d += ` C${mx},${y0} ${mx},${y1} ${x1},${y1}`; }
+    return d;
+  };
+  const area = (vals, fill) => bfEl('path', { d: smooth(vals) + ` L${x(vals.length - 1)},${y(0)} L${x(0)},${y(0)} Z`, fill });
+  svg.append(area(nDone, 'url(#bfAB)'), area(nNew, 'url(#bfAO)'));
+  days.forEach((d, i) => { if (i % 2 === 1 || i === days.length - 1) svg.append(bfEl('text', { x: x(i), y: H - 5, 'text-anchor': 'middle', 'font-size': 10, fill: '#9AA3B8' }, d.slice(5).replace('-', '/'))); });
+  const tip = bfTip(box);
+  const hot = bfEl('rect', { x: m.l, y: m.t, width: W - m.l - m.r, height: H - m.t - m.b, fill: 'transparent' });
+  hot.addEventListener('mousemove', e => {
+    const r = box.getBoundingClientRect(), s = r.width / box.offsetWidth;
+    const i = Math.max(0, Math.min(days.length - 1, Math.round(((e.clientX - r.left) / s - m.l) / ((W - m.l - m.r) / (days.length - 1)))));
+    tip(e, `<b>${days[i].slice(5).replace('-', '/')}</b><br>신규 ${nNew[i]} · 종결 ${nDone[i]}`);
+  });
+  hot.addEventListener('mouseleave', () => tip());
+  svg.append(hot);
+  box.replaceChildren(svg);
+}
+</script>
+
 </body>
 </html>
