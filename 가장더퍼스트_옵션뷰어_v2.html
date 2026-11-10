@@ -72,6 +72,10 @@ main{flex:1;display:flex;min-height:0;position:relative;overflow:hidden}
 .formula.pick-mode .f-var{cursor:pointer;transition:transform .1s}
 .formula.pick-mode .f-var:active{transform:scale(.9)}
 .f-var.picked{box-shadow:0 0 0 3px #e0a800}
+.f-neg{position:relative}
+.f-neg::after{content:'ᶜ';position:absolute;top:-6px;right:-7px;font-size:14px;font-weight:800;color:#c33}
+.f-group.f-neg::after{right:-4px}
+.formula:not(.pick-mode) .f-var{cursor:pointer}
 .f-op{display:inline-block;padding:0 4px;font-size:17px;font-weight:700;color:#555;cursor:pointer;user-select:none;min-width:22px;text-align:center}
 .f-op:active{color:#3868d8}
 .f-paren{display:inline-block;padding:0 2px;font-size:17px;font-weight:700;color:#8a5a00;cursor:pointer;user-select:none}
@@ -335,11 +339,20 @@ function evalNodes(nodes, ops){
   }
   return acc;
 }
+// 여집합(역): 전체 세대 − 집합
+function complement(set){
+  const out = new Set();
+  for(const code of Object.keys(DATA.units)) if(!set.has(code)) out.add(code);
+  return out;
+}
+function isSlotNeg(idx){return !!(selected[idx] && selected[idx].neg)}
+function evalVar(idx){const u = unitsForSlot(idx); return isSlotNeg(idx) ? complement(u) : u;}
 function evalNode(n){
-  if(n.type==='var') return unitsForSlot(n.idx);
+  if(n.type==='var') return evalVar(n.idx);
   // group: evaluate sub-formula
-  const subNodes = n.indices.map(i=>({type:'var',idx:i}));
-  return evalNodes(subNodes, n.ops);
+  let acc = n.indices.length ? evalVar(n.indices[0]) : new Set();
+  for(let j=1;j<n.indices.length;j++) acc = applyOp(acc, evalVar(n.indices[j]), n.ops[j-1]);
+  return n.neg ? complement(acc) : acc;
 }
 
 function evalFormula(){return evalNodes(formula.nodes, formula.topOps)}
@@ -569,7 +582,7 @@ function renderFormula(){
   if(pickMode){
     html += '<div class="formula-hint">그룹으로 묶을 옵션(A~F)을 2개 이상 탭한 후 [그룹 확정]을 누르세요. 이미 그룹에 속한 항목과 그룹 자체는 선택할 수 없습니다.</div>';
   } else {
-    html += '<div class="formula-hint">연산자를 탭하면 ∪(합) → ∩(교) → −(차) 순으로 바뀝니다. A − B = A에는 있고 B에는 없는 세대. 괄호가 있는 그룹을 탭하면 해제됩니다.</div>';
+    html += '<div class="formula-hint">연산자를 탭하면 ∪(합) → ∩(교) → −(차) 순으로 바뀝니다. A − B = A에는 있고 B에는 없는 세대. 옵션(A, B…)을 탭하면 역(여집합 ᶜ)으로 바뀝니다. 그룹의 닫는 괄호 ")"를 탭하면 그룹 전체의 역, 그룹의 나머지 부분을 탭하면 해제됩니다.</div>';
   }
   wrap.innerHTML = html;
 
@@ -591,6 +604,10 @@ function renderFormula(){
       if(pickMode && pickedIdxs.has(n.idx)) el.classList.add('picked');
       el.style.setProperty('--c', disabled ? '#bbb' : colorForSlot(n.idx));
       el.textContent = LABELS[n.idx];
+      if(isSlotNeg(n.idx)){ el.classList.add('f-neg'); el.title='여집합(역)'; }
+      if(!pickMode && selected[n.idx]){
+        el.onclick = (e)=>{ e.stopPropagation(); selected[n.idx].neg = !selected[n.idx].neg; refreshAll(); };
+      }
       if(pickMode && !disabled){
         el.onclick = ()=>{
           if(pickedIdxs.has(n.idx)) pickedIdxs.delete(n.idx);
@@ -631,11 +648,16 @@ function renderFormula(){
         varEl.className = 'f-var';
         varEl.style.setProperty('--c', colorForSlot(idx));
         varEl.textContent = LABELS[idx];
+        if(isSlotNeg(idx)) varEl.classList.add('f-neg');
+        varEl.onclick = (e)=>{ e.stopPropagation(); if(pickMode||!selected[idx]) return; selected[idx].neg = !selected[idx].neg; refreshAll(); };
         gEl.appendChild(varEl);
       });
       const rp = document.createElement('span');
       rp.className = 'f-paren';
       rp.textContent = ')';
+      rp.title = '탭: 그룹 전체 역(여집합)';
+      rp.onclick = (e)=>{ e.stopPropagation(); if(pickMode) return; n.neg = !n.neg; refreshAll(); };
+      if(n.neg) gEl.classList.add('f-neg');
       gEl.appendChild(rp);
       body.appendChild(gEl);
     }
@@ -1156,15 +1178,15 @@ function formulaToString(){
     if(i > 0) s += ' ' + formula.topOps[i-1] + ' ';
     if(n.type === 'var'){
       const sl = selected[n.idx];
-      s += `${LABELS[n.idx]}(${sl.val.replace(/\n/g,' ')})`;
+      s += `${LABELS[n.idx]}${sl.neg?'ᶜ':''}(${(sl.val||sl.label||'').replace(/\n/g,' ')})`;
     } else {
       s += '(';
       n.indices.forEach((idx, j)=>{
         if(j > 0) s += ' ' + n.ops[j-1] + ' ';
         const sl = selected[idx];
-        s += `${LABELS[idx]}(${sl.val.replace(/\n/g,' ')})`;
+        s += `${LABELS[idx]}${sl.neg?'ᶜ':''}(${(sl.val||sl.label||'').replace(/\n/g,' ')})`;
       });
-      s += ')';
+      s += ')' + (n.neg?'ᶜ':'');
     }
   });
   return s || '(없음)';
