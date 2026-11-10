@@ -260,7 +260,8 @@ let selected = new Array(MAX_OPTS).fill(null);
 //   {type:'var', idx:0..5}                      - single variable
 //   {type:'group', indices:[idx,idx,...], ops:[op,op,...]}  - parenthesized sub-formula
 // Between items in `nodes`, there's an operator array `topOps` of length nodes.length-1
-// Operators: '∪' (union) or '∩' (intersection)
+// Operators: '∪' (union), '∩' (intersection), '−' (difference: A − B)
+const NEXT_OP = {'∪':'∩','∩':'−','−':'∪'};
 let formula = {nodes: [], topOps: []};
 
 // Group picking mode
@@ -313,6 +314,10 @@ function applyOp(a, b, op){
   if(op==='∩'){
     const out = new Set();
     (a.size<b.size?a:b).forEach(x=>{ if((a.size<b.size?b:a).has(x)) out.add(x) });
+    return out;
+  } else if(op==='−'){
+    const out = new Set();
+    a.forEach(x=>{ if(!b.has(x)) out.add(x) });
     return out;
   } else { // ∪
     const out = new Set(a);
@@ -564,7 +569,7 @@ function renderFormula(){
   if(pickMode){
     html += '<div class="formula-hint">그룹으로 묶을 옵션(A~F)을 2개 이상 탭한 후 [그룹 확정]을 누르세요. 이미 그룹에 속한 항목과 그룹 자체는 선택할 수 없습니다.</div>';
   } else {
-    html += '<div class="formula-hint">연산자(∪/∩)를 탭하면 서로 토글됩니다. 괄호가 있는 그룹을 탭하면 해제됩니다.</div>';
+    html += '<div class="formula-hint">연산자를 탭하면 ∪(합) → ∩(교) → −(차) 순으로 바뀝니다. A − B = A에는 있고 B에는 없는 세대. 괄호가 있는 그룹을 탭하면 해제됩니다.</div>';
   }
   wrap.innerHTML = html;
 
@@ -576,7 +581,7 @@ function renderFormula(){
       const el = document.createElement('span');
       el.className = 'f-op';
       el.textContent = op;
-      el.onclick = (e)=>{e.stopPropagation(); formula.topOps[i-1] = op==='∪'?'∩':'∪'; refreshAll()};
+      el.onclick = (e)=>{e.stopPropagation(); formula.topOps[i-1] = NEXT_OP[op]||'∪'; refreshAll()};
       body.appendChild(el);
     }
     if(n.type==='var'){
@@ -617,7 +622,7 @@ function renderFormula(){
           opEl.onclick = (e)=>{
             e.stopPropagation();
             if(pickMode) return;
-            n.ops[j-1] = op==='∪'?'∩':'∪';
+            n.ops[j-1] = NEXT_OP[op]||'∪';
             refreshAll();
           };
           gEl.appendChild(opEl);
