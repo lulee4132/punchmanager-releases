@@ -2454,18 +2454,63 @@ async function deleteRow(photoId, btn) {
 }
 
 // ── 전체 삭제 ──
+// 비밀번호 입력창 (가려진 입력) — 취소 시 null
+function askPassword(title, msg) {
+  return new Promise(resolve => {
+    const ov = document.createElement('div');
+    ov.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,.7);z-index:9999;display:flex;align-items:center;justify-content:center;padding:16px';
+    ov.innerHTML = `<div style="background:var(--card);border:1px solid var(--red);border-radius:16px;padding:24px;width:100%;max-width:360px">
+      <div style="font-weight:700;color:var(--red);margin-bottom:8px">${title}</div>
+      <div style="font-size:13px;color:var(--muted);margin-bottom:14px">${msg}</div>
+      <input type="password" autocomplete="current-password" class="filter-input" style="width:100%;box-sizing:border-box;margin-bottom:14px" placeholder="비밀번호">
+      <div style="display:flex;gap:8px;justify-content:flex-end">
+        <button class="btn-sm" data-a="0" style="background:var(--card2);color:var(--muted)">취소</button>
+        <button class="btn-sm btn-danger" data-a="1">확인</button>
+      </div></div>`;
+    document.body.appendChild(ov);
+    const inp = ov.querySelector('input');
+    const done = ok => { const v = inp.value; ov.remove(); resolve(ok ? v : null); };
+    ov.querySelector('[data-a="0"]').onclick = () => done(false);
+    ov.querySelector('[data-a="1"]').onclick = () => done(true);
+    inp.onkeydown = e => { if (e.key === 'Enter') done(true); if (e.key === 'Escape') done(false); };
+    setTimeout(() => inp.focus(), 0);
+  });
+}
+
 async function confirmDeleteAll() {
+  if (!isAdmin) return;
   if (!confirm(`⚠️ ${currentSiteName} 현장의 모든 데이터를 삭제합니다.\n이 작업은 되돌릴 수 없습니다.\n\n정말 삭제하시겠습니까?`)) return;
   if (!confirm('마지막 확인: 정말 삭제하시겠습니까?')) return;
+
+  // 보안: 비밀번호 2회 입력 + 서버 재인증
+  const pw1 = await askPassword('🔒 비밀번호 확인 (1/2)', '현장 데이터 전체 삭제를 위해 비밀번호를 입력하세요.');
+  if (pw1 === null) return;
+  const pw2 = await askPassword('🔒 비밀번호 확인 (2/2)', '한 번 더 비밀번호를 입력하세요.');
+  if (pw2 === null) return;
+  if (!pw1 || pw1 !== pw2) { alert('두 비밀번호가 일치하지 않습니다. 삭제를 취소합니다.'); return; }
+  try {
+    const u = auth.currentUser;
+    if (!u || !u.email) throw new Error('로그인 정보 없음');
+    await u.reauthenticateWithCredential(firebase.auth.EmailAuthProvider.credential(u.email, pw1));
+  } catch (e) {
+    alert('비밀번호가 올바르지 않습니다. 삭제를 취소합니다.');
+    return;
+  }
 
   setSyncBar(true, '데이터 삭제 중...');
   try {
     const snap = await db.collection('sites').doc(currentSiteCode)
         .collection('photos').get();
-    const batch = db.batch();
-    snap.docs.forEach(d => batch.delete(d.ref));
-    await batch.commit();
+    // 배치는 최대 500건 → 400건씩 나눠 삭제
+    for (let i = 0; i < snap.docs.length; i += 400) {
+      const batch = db.batch();
+      snap.docs.slice(i, i + 400).forEach(d => batch.delete(d.ref));
+      await batch.commit();
+      setSyncBar(true, `데이터 삭제 중... (${Math.min(i + 400, snap.docs.length)}/${snap.docs.length})`);
+    }
     allPhotos = [];
+    loadedIds.clear();
+    serverCounts = null;
     applyFilter();
     updateStats();
     setSyncBar(false);
