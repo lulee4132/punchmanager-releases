@@ -306,6 +306,7 @@ tr:hover td{background:rgba(255,255,255,.02)}
       <button class="btn-sm btn-excel" onclick="downloadPhotosZip()">🗜️ ZIP</button>
       <button class="btn-sm" id="btn-select" style="background:var(--card2);color:var(--muted)" onclick="toggleSelectMode()">☑️ 선택</button>
       <button class="btn-sm btn-excel" id="btn-zip-selected" style="display:none" onclick="downloadSelectedZip()">🗜️ 선택 ZIP (0)</button>
+      <button class="btn-sm btn-danger" id="btn-del-selected" style="display:none" onclick="deleteSelected()">🗑️ 선택 삭제 (0)</button>
       <button class="btn-sm btn-upload" id="btn-upload-top" onclick="openUploadModal()">📤 업로드</button>
       <button class="btn-sm" style="background:#3B82F6;color:#fff" onclick="openInspect()">🔍 검측</button>
       <button class="btn-sm" style="background:#6A5ACD;color:#fff" onclick="openGolgudo()">🏢 골구도</button>
@@ -648,7 +649,13 @@ async function synthEmail(name, code) {
 }
 
 // ── 페이지네이션 상태 ──
-const PAGE_SIZE = 50;
+const FIRST_PAGE_SIZE = 50;     // 첫 화면
+const PAGE_SIZE = 1000;         // 백그라운드 페이지 (왕복 횟수 최소화)
+const RENDER_STEP = 200;        // 표는 200행씩 그림 (스크롤 시 추가)
+let renderLimit = RENDER_STEP;
+let isActiveLoaded = false;     // 진행중 전체 로드 완료 → 골구도 정확
+let serverCounts = null;        // 서버 count() 집계 {total, open, done}
+const filterQueryCache = new Map(); // 로딩 중 필터 서버질의 캐시
 let lastDoc = null;
 let hasMore = true;
 let isLoadingMore = false;
@@ -803,25 +810,70 @@ async function loadPhotos() {
   lastDoc = null;
   hasMore = true;
   isFullLoaded = false;
+  isActiveLoaded = false;
+  serverCounts = null;
+  filterQueryCache.clear();
   bgLoadCancelToken++;
+  const token = bgLoadCancelToken;
   try {
-    await fetchNextPage();
+    // 1) 최신 50건 즉시 표시
+    await fetchNextPage(FIRST_PAGE_SIZE);
     buildFilters();
     applyFilter();
     updateStats();
     setSyncBar(false);
-    // 첫 페이지 렌더 후 백그라운드로 나머지 전체 로드
-    if (hasMore) {
-      loadAllInBackground(bgLoadCancelToken);
-    } else {
-      isFullLoaded = true;
-      updateStats();
-    }
+    // 2) 서버 집계로 전체/진행중/완료 건수 즉시 확정 (문서 다운로드 없이)
+    loadServerCounts(token);
+    // 3) 진행중 전체를 한 번에 로드 → 골구도·진행중 현황은 이것만으로 정확
+    loadAllActive(token);
+    // 4) 나머지(완료 포함) 전체는 큰 페이지로 백그라운드 로드
+    if (hasMore) loadAllInBackground(token);
+    else { isFullLoaded = true; updateStats(); }
   } catch(e) {
     setSyncBar(false);
     document.getElementById('tbl-body').innerHTML =
       `<div class="empty">데이터를 불러올 수 없습니다<br><small style="color:var(--muted)">${e.message}</small></div>`;
   }
+}
+
+// 기본 쿼리 (업체는 배정 공종만 서버에서 제한)
+function photosQuery() {
+  let q = db.collection('sites').doc(currentSiteCode).collection('photos');
+  if (currentRole === 'vendor') {
+    const scope = (currentGjScope || []).slice(0, 30); // 'in' 최대 30개
+    if (scope.length === 0) return null;
+    q = q.where('gj', 'in', scope);
+  }
+  return q;
+}
+
+// 서버 count() 집계 — 로딩 중에도 정확한 전체 현황
+async function loadServerCounts(token) {
+  try {
+    const q = photosQuery();
+    if (!q) return;
+    const [t, a, d] = await Promise.all([
+      q.count().get(),
+      q.where('status', '==', 'active').count().get(),
+      q.where('status', '==', 'done').count().get(),
+    ]);
+    if (token !== bgLoadCancelToken) return;
+    serverCounts = { total: t.data().count, open: a.data().count, done: d.data().count };
+    updateStats();
+  } catch (e) { console.warn('집계 실패(무시):', e); }
+}
+
+// 진행중 항목 전체 (정렬/색인 불필요한 단순 등호 쿼리)
+async function loadAllActive(token) {
+  try {
+    const q = photosQuery();
+    if (!q) { isActiveLoaded = true; return; }
+    const snap = await q.where('status', '==', 'active').get();
+    if (token !== bgLoadCancelToken) return;
+    mergeDocs(snap.docs);
+    isActiveLoaded = true;
+    scheduleRefresh();
+  } catch (e) { console.error('진행중 로드 실패:', e); }
 }
 
 // 백그라운드 전체 메타데이터 로드 (사진 바이너리 X, Firestore 문서만)
@@ -830,18 +882,15 @@ async function loadAllInBackground(token) {
   isBgLoading = true;
   try {
     while (hasMore && token === bgLoadCancelToken) {
-      const before = allPhotos.length;
-      await fetchNextPage();
-      // 페이지마다 통계/필터 점진적 업데이트
+      const n = await fetchNextPage(PAGE_SIZE);
       if (token !== bgLoadCancelToken) return;
-      buildFilters();
-      applyFilter();
-      updateStats();
-      if (allPhotos.length === before) break; // 안전장치
+      scheduleRefresh();
+      if (n === 0) break; // 안전장치
     }
     if (token === bgLoadCancelToken) {
       isFullLoaded = true;
-      updateStats();
+      isActiveLoaded = true;
+      scheduleRefresh();
     }
   } catch (e) {
     console.error('백그라운드 로드 실패:', e);
@@ -850,68 +899,110 @@ async function loadAllInBackground(token) {
   }
 }
 
-async function fetchNextPage() {
+// 백그라운드 갱신은 묶어서 한 번만 다시 그림 (매 페이지 전체 재렌더 방지)
+let _refreshTimer = null;
+function scheduleRefresh() {
+  if (_refreshTimer) return;
+  _refreshTimer = setTimeout(() => {
+    _refreshTimer = null;
+    buildFilters();
+    applyFilter(true);
+    updateStats();
+  }, 300);
+}
+
+async function fetchNextPage(size = PAGE_SIZE) {
   if (!hasMore) return 0;
-  let q = db.collection('sites').doc(currentSiteCode).collection('photos');
-
-  // 업체(vendor)는 배정된 공종만 "서버 쿼리"로 제한.
-  // ⚠️ 엄격 보안룰에서는 전체 조회가 거부되므로 클라이언트 필터만으로는 부족.
-  //    (gj in [...] + orderBy ts 는 복합 색인 필요 — 콘솔 안내 링크로 생성)
-  if (currentRole === 'vendor') {
-    const scope = (currentGjScope || []).slice(0, 30); // 'in' 최대 30개
-    if (scope.length === 0) { hasMore = false; return 0; }
-    q = q.where('gj', 'in', scope);
-  }
-
-  q = q.orderBy('ts', 'desc').limit(PAGE_SIZE);
+  let q = photosQuery();
+  if (!q) { hasMore = false; return 0; }
+  // (gj in [...] + orderBy ts 는 복합 색인 필요 — 콘솔 안내 링크로 생성)
+  q = q.orderBy('ts', 'desc').limit(size);
   if (lastDoc) q = q.startAfter(lastDoc);
 
   const snap = await q.get();
   if (snap.empty) { hasMore = false; return 0; }
   lastDoc = snap.docs[snap.docs.length - 1];
-  if (snap.docs.length < PAGE_SIZE) hasMore = false;
+  if (snap.docs.length < size) hasMore = false;
+  mergeDocs(snap.docs);
+  return snap.docs.length;
+}
 
-  // ts 기준 중복 제거 - 같은 ts면 status가 'done'인 것 우선
+// 어떤 쿼리로 받은 문서든 allPhotos 로 병합
+// ts 기준 중복 제거 - 같은 ts면 status가 'done'인 것 우선
+function mergeDocs(docs) {
   const tsMap = new Map();
   for (const p of allPhotos) tsMap.set(p.ts, p);
-  for (const d of snap.docs) {
-    const p = { id: d.id, ...d.data() };
+  let added = 0;
+  for (const d of docs) {
     if (loadedIds.has(d.id)) continue;
     loadedIds.add(d.id);
+    added++;
+    const p = { id: d.id, ...d.data() };
     const existing = tsMap.get(p.ts);
     if (!existing) tsMap.set(p.ts, p);
     else if (p.status === 'done' && existing.status !== 'done') tsMap.set(p.ts, p);
   }
-  allPhotos = Array.from(tsMap.values()).sort((a,b) => (b.ts||0) - (a.ts||0));
-  return snap.docs.length;
+  if (added) allPhotos = Array.from(tsMap.values()).sort((a,b) => (b.ts||0) - (a.ts||0));
+  return added;
 }
 
-async function loadMorePhotos() {
-  if (isLoadingMore || !hasMore) return;
-  isLoadingMore = true;
-  updateLoadMoreUI();
-  try {
-    const added = await fetchNextPage();
-    if (added > 0) {
-      buildFilters();
-      applyFilter();
-      updateStats();
-    }
-  } catch(e) {
-    console.error('추가 로드 실패:', e);
-  } finally {
-    isLoadingMore = false;
-    updateLoadMoreUI();
+// 로딩 중 필터: 등호 조건(동/호/공종/상태/작성자)을 서버에 직접 질의해
+// 해당 조건의 항목을 누락 없이 즉시 가져온다.
+function ensureFilterLoaded() {
+  if (isFullLoaded) return true;
+  const f = {
+    dong: document.getElementById('f-dong').value,
+    ho: document.getElementById('f-ho').value,
+    gj: document.getElementById('f-gj').value,
+    status: document.getElementById('f-status').value,
+    userName: document.getElementById('f-user').value,
+  };
+  const keys = Object.keys(f).filter(k => f[k]);
+  if (keys.length === 0) return false;               // 서버 질의 불가 (검색어/날짜만)
+  if (f.status === 'active' && isActiveLoaded) return true; // 진행중 전체는 이미 보유
+  // 이미 받은 더 넓은 조건이 있으면 재질의 불필요
+  for (const [ck, done] of filterQueryCache) {
+    if (done !== true) continue;
+    const c = JSON.parse(ck);
+    if (Object.keys(c).every(k => f[k] === c[k])) return true;
   }
+  const cacheKey = JSON.stringify(Object.fromEntries(keys.map(k => [k, f[k]])));
+  if (filterQueryCache.get(cacheKey) === true) return true;
+  if (filterQueryCache.has(cacheKey)) return filterQueryCache.get(cacheKey); // 진행중 promise
+  const token = bgLoadCancelToken;
+  const p = (async () => {
+    let q = db.collection('sites').doc(currentSiteCode).collection('photos');
+    if (currentRole === 'vendor') {
+      const scope = currentGjScope || [];
+      if (f.gj) { if (!scope.includes(f.gj)) return true; }
+      else { if (!scope.length) return true; q = q.where('gj', 'in', scope.slice(0, 30)); }
+    }
+    for (const k of keys) q = q.where(k, '==', f[k]);
+    const snap = await q.get();
+    if (token !== bgLoadCancelToken) return false;
+    mergeDocs(snap.docs);
+    filterQueryCache.set(cacheKey, true);
+    return true;
+  })().catch(e => { console.warn('필터 서버 조회 실패:', e); filterQueryCache.delete(cacheKey); return false; });
+  filterQueryCache.set(cacheKey, p);
+  return p;
+}
+
+// 스크롤 시 표 행을 추가로 그림 (데이터는 백그라운드에서 이미 받는 중)
+let lastFilteredCount = 0;
+function loadMorePhotos() {
+  if (renderLimit >= lastFilteredCount) return;
+  renderLimit += RENDER_STEP;
+  applyFilter(true);
 }
 
 function updateLoadMoreUI() {
   const el = document.getElementById('load-more-ind');
   if (!el) return;
-  if (isLoadingMore) {
+  if (renderLimit < lastFilteredCount) {
     el.className = 'load-more';
-    el.innerHTML = '<div class="spinner"></div>더 불러오는 중...';
-  } else if (!hasMore && allPhotos.length > 0) {
+    el.textContent = `${Math.min(renderLimit, lastFilteredCount)} / ${lastFilteredCount}개 표시 · 스크롤하면 더 보기`;
+  } else if (isFullLoaded && allPhotos.length > 0) {
     el.className = 'load-end';
     el.textContent = '— 모든 항목을 불러왔습니다 —';
   } else {
@@ -945,7 +1036,9 @@ function basePhotos() {
 
 function buildFilters() {
   const src = basePhotos();
-  const dongs = [...new Set(src.map(p => p.dong).filter(Boolean))].sort();
+  // 동 목록은 골구도 설정(전체 동)과 합쳐 로딩 중에도 빠짐없이
+  const cfgDongs = currentRole === 'vendor' ? [] : Object.keys(DONG_CFG);
+  const dongs = [...new Set([...cfgDongs, ...src.map(p => p.dong).filter(Boolean)])].sort();
   const hos = [...new Set(src.map(p => p.ho).filter(Boolean))].sort();
   const gjs = [...new Set(src.map(p => p.gj).filter(Boolean))].sort();
   const users = [...new Set(src.map(p => p.userName).filter(Boolean))].sort();
@@ -959,6 +1052,8 @@ function buildFilters() {
 function setOptions(id, arr, placeholder) {
   const sel = document.getElementById(id);
   const cur = sel.value;
+  // 현재 선택값이 아직 로드 안 된 값이어도 유지 (골구도 클릭 등)
+  if (cur && !arr.includes(cur)) arr = [...arr, cur];
   sel.innerHTML = `<option value="">${placeholder}</option>` +
     arr.map(v => `<option value="${v}"${v===cur?' selected':''}>${v}</option>`).join('');
 }
@@ -1008,7 +1103,9 @@ function photoPassesFilters(p) {
   return true;
 }
 
-function applyFilter() {
+let _filterSeq = 0;
+function applyFilter(keepLimit) {
+  if (keepLimit !== true) renderLimit = RENDER_STEP;
   const dong = document.getElementById('f-dong').value;
 
   const src = basePhotos();
@@ -1025,9 +1122,25 @@ function applyFilter() {
   }
 
   const filtered = src.filter(photoPassesFilters);
+  lastFilteredCount = filtered.length;
 
   renderTable(filtered);
-  document.getElementById('tbl-count').textContent = `${filtered.length}개`;
+
+  // 로딩 중이면: 등호 필터는 서버에서 해당 조건 전체를 바로 받아 누락 없이 표시
+  const countEl = document.getElementById('tbl-count');
+  if (isFullLoaded) { countEl.textContent = `${filtered.length}개`; return; }
+  const seq = ++_filterSeq;
+  const r = ensureFilterLoaded();
+  const show = complete => {
+    if (seq !== _filterSeq) return;
+    countEl.textContent = complete ? `${filtered.length}개` : `${filtered.length}개+ (전체 로딩 중)`;
+  };
+  if (r === true || r === false) { show(r); return; }
+  countEl.textContent = `${filtered.length}개 · 조건 전체 조회 중...`;
+  r.then(ok => {
+    if (seq !== _filterSeq) return;
+    if (ok) { buildFilters(); applyFilter(true); } else show(false);
+  });
 }
 
 function resetFilter() {
@@ -1053,6 +1166,7 @@ function toggleSelectMode() {
   b.style.color = selectMode ? '#000' : 'var(--muted)';
   b.textContent = selectMode ? '✖ 선택 해제' : '☑️ 선택';
   document.getElementById('btn-zip-selected').style.display = selectMode ? '' : 'none';
+  document.getElementById('btn-del-selected').style.display = (selectMode && isAdmin) ? '' : 'none';
   updateSelCount();
   applyFilter(); // 체크박스 열 표시/숨김 재렌더
 }
@@ -1071,6 +1185,48 @@ function toggleSelectAll(el) {
 function updateSelCount() {
   const b = document.getElementById('btn-zip-selected');
   if (b) b.textContent = `🗜️ 선택 ZIP (${selectedIds.size})`;
+  const d = document.getElementById('btn-del-selected');
+  if (d) d.textContent = `🗑️ 선택 삭제 (${selectedIds.size})`;
+}
+
+// ── 선택 항목 일괄 삭제 (관리자) ──
+async function deleteSelected() {
+  if (!isAdmin) return;
+  const ids = [...selectedIds];
+  if (ids.length === 0) { alert('선택된 항목이 없습니다.'); return; }
+  if (!confirm(`선택한 ${ids.length}개 항목을 삭제하시겠습니까?\n되돌릴 수 없습니다.`)) return;
+  const btn = document.getElementById('btn-del-selected');
+  btn.disabled = true;
+  setSyncBar(true, `삭제 중... (0/${ids.length})`);
+  const coll = db.collection('sites').doc(currentSiteCode).collection('photos');
+  const deleted = new Set();
+  let failed = 0;
+  try {
+    for (let i = 0; i < ids.length; i += 400) {
+      const chunk = ids.slice(i, i + 400);
+      const batch = db.batch();
+      chunk.forEach(id => batch.delete(coll.doc(id)));
+      try {
+        await batch.commit();
+        chunk.forEach(id => deleted.add(id));
+      } catch (e) { console.error('일괄 삭제 실패:', e); failed += chunk.length; }
+      setSyncBar(true, `삭제 중... (${deleted.size}/${ids.length})`);
+    }
+    // Storage 사진 삭제 (없어도 무시)
+    await Promise.all([...deleted].map(id =>
+      storage.ref(`sites/${currentSiteCode}/photos/photo_${id}.png`).delete().catch(() => {})));
+    allPhotos = allPhotos.filter(p => !deleted.has(p.id));
+    deleted.forEach(id => selectedIds.delete(id));
+    if (serverCounts) loadServerCounts(bgLoadCancelToken);
+    buildFilters();
+    applyFilter(true);
+    updateStats();
+    updateSelCount();
+  } finally {
+    setSyncBar(false);
+    btn.disabled = false;
+  }
+  alert(failed ? `${deleted.size}개 삭제, ${failed}개 실패` : `${deleted.size}개 삭제됐습니다.`);
 }
 
 function updateStats() {
@@ -1081,16 +1237,21 @@ function updateStats() {
   const users = new Set(src.map(p => p.userName).filter(Boolean)).size;
   // 백그라운드 로딩 중이면 숫자 뒤에 "+" 표기 (아직 더 있다는 뜻)
   const suffix = isFullLoaded ? '' : '+';
-  document.getElementById('st-total').textContent = total + suffix;
-  document.getElementById('st-open').textContent = open + suffix;
-  document.getElementById('st-done').textContent = done + suffix;
+  // 로딩 중에는 서버 집계값(정확)을 우선 표시
+  const sc = (!isFullLoaded && serverCounts) ? serverCounts : null;
+  document.getElementById('st-total').textContent = sc ? sc.total : total + suffix;
+  document.getElementById('st-open').textContent = sc ? sc.open : (isActiveLoaded ? open : open + suffix);
+  document.getElementById('st-done').textContent = sc ? sc.done : done + suffix;
   document.getElementById('st-users').textContent = users + suffix;
 
   // 로딩 인디케이터
   const ind = document.getElementById('bg-load-ind');
   if (ind) {
     ind.style.display = isFullLoaded ? 'none' : 'inline-block';
-    if (!isFullLoaded) ind.textContent = `📥 전체 데이터 로딩 중... (${total}개 누적)`;
+    if (!isFullLoaded) {
+      const of = serverCounts ? ` / ${serverCounts.total}` : '';
+      ind.textContent = `📥 전체 데이터 로딩 중... (${total}${of}개) · 진행중 ${isActiveLoaded ? '전체 로드 완료 ✓ (골구도 정확)' : '로딩 중'} · 동/호/공종/상태/작성자 필터는 로딩 중에도 누락 없이 서버 조회`;
+    }
   }
 }
 
@@ -1100,7 +1261,7 @@ function renderTable(photos) {
     return;
   }
 
-  const rows = photos.map(p => {
+  const rows = photos.slice(0, renderLimit).map(p => {
     const beforeImg = p.url
       ? `<div class="thumb-wrap"><img class="thumb" src="${p.url}" onclick="openImg('${p.url}','${esc(p.wichi)}','전(하자) · ${esc(p.gj+' · '+p.date+' · '+p.userName)}')" loading="lazy"><span class="thumb-tag tag-before">전</span></div>`
       : `<div class="no-thumb">📷</div>`;
@@ -1207,7 +1368,13 @@ function coreOfPhoto(p) {
   return m ? `${m[1]}코어` : '';
 }
 
-function openGolgudo() {
+async function openGolgudo() {
+  // 골구도는 진행중 건만 사용 → 진행중 전체 로드만 기다리면 정확
+  if (!isActiveLoaded && !isFullLoaded) {
+    setSyncBar(true, '진행중 항목 불러오는 중...');
+    while (!isActiveLoaded && !isFullLoaded) await new Promise(r => setTimeout(r, 150));
+    setSyncBar(false);
+  }
   document.getElementById('gg-body').innerHTML = buildGolgudoHtml(basePhotos().filter(p => p.status !== 'done'));
   document.getElementById('gg-modal').classList.add('open');
 }
