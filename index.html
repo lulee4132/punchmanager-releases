@@ -358,6 +358,7 @@ tr:hover td{background:rgba(255,255,255,.02)}
       <div class="table-header">
         <span class="table-count" id="tbl-count">0개</span>
         <button class="btn-sm btn-danger" id="btn-delete-all" style="display:none" onclick="confirmDeleteAll()">🗑️ 현장 데이터 전체 삭제</button>
+        <button class="btn-sm" id="btn-merge-gj" style="display:none" onclick="mergeGjNaejang()">🔀 공종 통합 (내장 → 내장목)</button>
       </div>
       <div id="tbl-body">
         <div class="loading"><div class="spinner"></div>데이터 불러오는 중...</div>
@@ -639,6 +640,11 @@ let currentUserName = '';
 let isAdmin = false;
 let currentRole = 'member';
 let currentGjScope = [];
+// 공종 통합: 구 '내장' → '내장목' (DB 이관 전 데이터도 같은 공종으로 취급)
+const GJ_ALIAS = { '내장': '내장목' };
+const normGj = g => GJ_ALIAS[g] || g;
+// 쿼리용: '내장목' 이면 구 이름 '내장'도 함께 조회
+const gjWithAliases = list => [...new Set(list.flatMap(g => [g, ...Object.keys(GJ_ALIAS).filter(k => GJ_ALIAS[k] === g)]))];
 
 // 이름+현장코드 → 앱과 동일한 합성 이메일 (sha256 앞 24자리)
 async function synthEmail(name, code) {
@@ -761,7 +767,7 @@ function finishLogin(code, siteName, name, role, gjScope) {
   currentSiteName = siteName;
   currentUserName = name;
   currentRole = role;
-  currentGjScope = gjScope || [];
+  currentGjScope = (gjScope || []).map(normGj);
   isAdmin = role === 'admin';
   sessionStorage.setItem('pm_code', code);
   sessionStorage.setItem('pm_name', name);
@@ -796,6 +802,7 @@ function showMain() {
   document.getElementById('tb-site').textContent = currentSiteName;
   document.getElementById('tb-code').textContent = currentSiteCode;
   if (isAdmin) document.getElementById('btn-delete-all').style.display = 'block';
+  if (isAdmin) document.getElementById('btn-merge-gj').style.display = 'block';
   document.getElementById('btn-members').style.display = isAdmin ? '' : 'none';
   document.getElementById('btn-brief').style.display = isAdmin ? '' : 'none';
   // 업체는 원본 업로드 불가 (열람 전용)
@@ -842,7 +849,7 @@ function photosQuery() {
   if (currentRole === 'vendor') {
     const scope = (currentGjScope || []).slice(0, 30); // 'in' 최대 30개
     if (scope.length === 0) return null;
-    q = q.where('gj', 'in', scope);
+    q = q.where('gj', 'in', gjWithAliases(scope).slice(0, 30));
   }
   return q;
 }
@@ -938,6 +945,7 @@ function mergeDocs(docs) {
     loadedIds.add(d.id);
     added++;
     const p = { id: d.id, ...d.data() };
+    if (p.gj) p.gj = normGj(p.gj);
     const existing = tsMap.get(p.ts);
     if (!existing) tsMap.set(p.ts, p);
     else if (p.status === 'done' && existing.status !== 'done') tsMap.set(p.ts, p);
@@ -975,9 +983,12 @@ function ensureFilterLoaded() {
     if (currentRole === 'vendor') {
       const scope = currentGjScope || [];
       if (f.gj) { if (!scope.includes(f.gj)) return true; }
-      else { if (!scope.length) return true; q = q.where('gj', 'in', scope.slice(0, 30)); }
+      else { if (!scope.length) return true; q = q.where('gj', 'in', gjWithAliases(scope).slice(0, 30)); }
     }
-    for (const k of keys) q = q.where(k, '==', f[k]);
+    for (const k of keys) {
+      if (k === 'gj' && gjWithAliases([f[k]]).length > 1) q = q.where('gj', 'in', gjWithAliases([f[k]]));
+      else q = q.where(k, '==', f[k]);
+    }
     const snap = await q.get();
     if (token !== bgLoadCancelToken) return false;
     mergeDocs(snap.docs);
@@ -1315,6 +1326,30 @@ function renderTable(photos) {
 }
 
 function esc(s) { return (s||'').replace(/'/g,"\\'"); }
+
+// ── ADMIN 전용: DB의 구 공종 '내장' → '내장목' 일괄 변경 (항목 + 업체 배정 공종) ──
+async function mergeGjNaejang() {
+  if (!isAdmin) return;
+  const site = db.collection('sites').doc(currentSiteCode);
+  const snap = await site.collection('photos').where('gj', '==', '내장').get();
+  const mem = await site.collection('members').get();
+  const memDocs = mem.docs.filter(d => (d.data().gjScope || []).includes('내장'));
+  if (!snap.size && !memDocs.length) { alert("'내장' 공종 항목이 없습니다. 이미 통합되어 있습니다."); return; }
+  if (!confirm(`항목 ${snap.size}건, 업체 배정 ${memDocs.length}명의 공종 '내장'을 '내장목'으로 바꿉니다. 진행할까요?`)) return;
+  try {
+    const docs = snap.docs;
+    for (let i = 0; i < docs.length; i += 400) {
+      const b = db.batch();
+      docs.slice(i, i + 400).forEach(d => b.update(d.ref, { gj: '내장목' }));
+      await b.commit();
+    }
+    for (const d of memDocs) {
+      const sc = [...new Set(d.data().gjScope.map(normGj))];
+      await d.ref.update({ gjScope: sc });
+    }
+    alert(`완료: 항목 ${docs.length}건, 업체 ${memDocs.length}명 변경`);
+  } catch (e) { alert('변경 실패: ' + e.message); }
+}
 
 // ── ADMIN 전용: 항목 공종/내용 수정 ──
 function openEditItem(id) {
@@ -2807,7 +2842,7 @@ window.onload = () => {
     currentSiteName = site || '';
     isAdmin = admin === '1';
     currentRole = sessionStorage.getItem('pm_role') || (isAdmin ? 'admin' : 'member');
-    try { currentGjScope = JSON.parse(sessionStorage.getItem('pm_scope') || '[]'); }
+    try { currentGjScope = JSON.parse(sessionStorage.getItem('pm_scope') || '[]').map(normGj); }
     catch(_) { currentGjScope = []; }
     document.getElementById('inp-code').value = code;
     document.getElementById('inp-name').value = name;
