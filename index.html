@@ -1283,7 +1283,7 @@ function renderTable(photos) {
         : `<span class="badge badge-open">진행중</span>`;
     }
     const delBtn = isAdmin
-      ? `<td class="cell-del" data-label="관리"><button class="btn-del-row" onclick="deleteRow('${p.id}',this)">🗑️ 삭제</button></td>`
+      ? `<td class="cell-del" data-label="관리"><button class="btn-del-row" style="margin-bottom:4px;border-color:var(--accent);color:var(--accent)" onclick="openEditItem('${p.id}')">✏️ 수정</button><button class="btn-del-row" onclick="deleteRow('${p.id}',this)">🗑️ 삭제</button></td>`
       : '';
     const checkCell = selectMode
       ? `<td data-label="선택" style="text-align:center"><input type="checkbox" class="row-check" data-id="${p.id}" ${selectedIds.has(p.id)?'checked':''} onclick="toggleSelect('${p.id}')" style="width:18px;height:18px;accent-color:var(--accent)"></td>`
@@ -1315,6 +1315,54 @@ function renderTable(photos) {
 }
 
 function esc(s) { return (s||'').replace(/'/g,"\\'"); }
+
+// ── ADMIN 전용: 항목 공종/내용 수정 ──
+function openEditItem(id) {
+  if (!isAdmin) return;
+  const p = allPhotos.find(x => x.id === id);
+  if (!p) return;
+  const gjs = [...new Set(allPhotos.map(x => x.gj).filter(Boolean))].sort();
+  let m = document.getElementById('edit-item-modal');
+  if (!m) { m = document.createElement('div'); m.id = 'edit-item-modal'; document.body.appendChild(m); }
+  m.style.cssText = 'display:flex;position:fixed;inset:0;background:rgba(0,0,0,.75);z-index:650;align-items:center;justify-content:center;padding:24px';
+  const h = s => String(s||'').replace(/[&<>"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+  m.innerHTML = `<div style="background:var(--surface,#1a1d27);border:1px solid var(--border,#2e3350);border-radius:12px;padding:20px;width:100%;max-width:420px;color:var(--text,#fff)">
+    <div style="font-weight:700;font-size:16px;margin-bottom:4px">항목 수정</div>
+    <div style="font-size:12px;opacity:.6;margin-bottom:14px">${h([p.dong,p.ho,p.room,p.bui].filter(Boolean).join(' '))}</div>
+    <label style="font-size:12px;opacity:.7">공종</label>
+    <input id="ei-gj" list="ei-gj-list" value="${h(p.gj)}" style="width:100%;box-sizing:border-box;margin:4px 0 12px;padding:10px;border-radius:8px;border:1px solid var(--border,#2e3350);background:var(--bg,#0f1117);color:inherit;font-size:14px">
+    <datalist id="ei-gj-list">${gjs.map(g => `<option value="${h(g)}">`).join('')}</datalist>
+    <label style="font-size:12px;opacity:.7">내용</label>
+    <textarea id="ei-content" rows="4" style="width:100%;box-sizing:border-box;margin:4px 0 8px;padding:10px;border-radius:8px;border:1px solid var(--border,#2e3350);background:var(--bg,#0f1117);color:inherit;font-size:14px;resize:vertical">${h(p.content)}</textarea>
+    <div id="ei-err" style="color:#e74c3c;font-size:12px;min-height:16px"></div>
+    <div style="display:flex;gap:8px;justify-content:flex-end;margin-top:8px">
+      <button onclick="closeEditItem()" style="padding:9px 16px;border-radius:8px;border:1px solid var(--border,#2e3350);background:none;color:inherit;cursor:pointer">취소</button>
+      <button id="ei-save" onclick="saveEditItem('${id}')" style="padding:9px 16px;border-radius:8px;border:none;background:var(--accent,#5c6bc0);color:#fff;font-weight:700;cursor:pointer">저장</button>
+    </div></div>`;
+  m.onclick = e => { if (e.target === m) closeEditItem(); };
+}
+function closeEditItem() { const m = document.getElementById('edit-item-modal'); if (m) m.style.display = 'none'; }
+async function saveEditItem(id) {
+  if (!isAdmin) return;
+  const p = allPhotos.find(x => x.id === id);
+  if (!p) return;
+  const gj = document.getElementById('ei-gj').value.trim();
+  const content = document.getElementById('ei-content').value.trim();
+  const err = document.getElementById('ei-err');
+  if (!gj) { err.textContent = '공종을 입력하세요.'; return; }
+  if (gj === (p.gj||'') && content === (p.content||'')) { closeEditItem(); return; }
+  const btn = document.getElementById('ei-save');
+  btn.disabled = true; btn.textContent = '저장 중...';
+  try {
+    await db.collection('sites').doc(currentSiteCode).collection('photos').doc(id).update({ gj, content });
+    p.gj = gj; p.content = content;
+    closeEditItem();
+    buildFilters(); applyFilter(); updateStats();
+  } catch (e) {
+    err.textContent = '저장 실패: ' + e.message;
+    btn.disabled = false; btn.textContent = '저장';
+  }
+}
 
 // ── 이미지 모달 ──
 function openImg(url, loc, sub) {
