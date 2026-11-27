@@ -824,7 +824,8 @@ async function loadPhotos() {
   const token = bgLoadCancelToken;
   try {
     // 1) 최신 50건 즉시 표시
-    await fetchNextPage(FIRST_PAGE_SIZE);
+    await fetchNextPage(FIRST_PAGE_SIZE, token);
+    if (token !== bgLoadCancelToken) return; // 그 사이 새 로드가 시작됨
     buildFilters();
     applyFilter();
     updateStats();
@@ -885,11 +886,23 @@ async function loadAllActive(token) {
 
 // 백그라운드 전체 메타데이터 로드 (사진 바이너리 X, Firestore 문서만)
 async function loadAllInBackground(token) {
-  if (isBgLoading) return;
-  isBgLoading = true;
+  // 토큰별로 하나만 실행 (이전 로드가 남아 있어도 새 로드는 막지 않음)
+  if (isBgLoading === token) return;
+  isBgLoading = token;
+  let fails = 0;
   try {
     while (hasMore && token === bgLoadCancelToken) {
-      const n = await fetchNextPage(PAGE_SIZE);
+      let n;
+      try {
+        n = await fetchNextPage(PAGE_SIZE, token);
+      } catch (e) {
+        // 일시적 네트워크 오류: 잠시 후 같은 위치부터 재시도 (멈춤 방지)
+        if (++fails > 5) throw e;
+        console.warn('백그라운드 로드 재시도', fails, e);
+        await new Promise(r => setTimeout(r, 1000 * fails));
+        continue;
+      }
+      fails = 0;
       if (token !== bgLoadCancelToken) return;
       scheduleRefresh();
       if (n === 0) break; // 안전장치
@@ -902,7 +915,7 @@ async function loadAllInBackground(token) {
   } catch (e) {
     console.error('백그라운드 로드 실패:', e);
   } finally {
-    isBgLoading = false;
+    if (isBgLoading === token) isBgLoading = false;
   }
 }
 
@@ -918,7 +931,7 @@ function scheduleRefresh() {
   }, 300);
 }
 
-async function fetchNextPage(size = PAGE_SIZE) {
+async function fetchNextPage(size = PAGE_SIZE, token = bgLoadCancelToken) {
   if (!hasMore) return 0;
   let q = photosQuery();
   if (!q) { hasMore = false; return 0; }
@@ -927,6 +940,9 @@ async function fetchNextPage(size = PAGE_SIZE) {
   if (lastDoc) q = q.startAfter(lastDoc);
 
   const snap = await q.get();
+  // 응답을 기다리는 사이 새 로드(재로그인·현장 전환)가 시작됐으면 결과를 버린다.
+  // (이전 응답이 새 로드의 lastDoc/hasMore 를 덮어써 50건에서 '완료'로 멈추던 버그)
+  if (token !== bgLoadCancelToken) return 0;
   if (snap.empty) { hasMore = false; return 0; }
   lastDoc = snap.docs[snap.docs.length - 1];
   if (snap.docs.length < size) hasMore = false;
